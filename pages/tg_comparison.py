@@ -10,7 +10,7 @@ import numpy as np
 from scipy.signal import savgol_filter
 import ast
 
-dash.register_page(__name__, path='/tg-comparison', name='TG Comparison', order=2)
+dash.register_page(__name__, path='/tg-comparison', name='Thermogravimetric Analysis', order=2)
 dash._dash_renderer._set_react_version('18.2.0')
 
 def decode_csv_file_content(contents):
@@ -71,7 +71,7 @@ layout = html.Div([
                 }
             ),
             html.H2(
-                "TG Comparison",
+                "Thermogravimetric Analysis",
                 className="text-center mb-3",
                 style={
                     "fontWeight": "bold",

@@ -17,7 +17,7 @@ import os
 
 
 
-dash.register_page(__name__, path='/tg-ftir-analysis', name='TG-FTIR Analysis', order=1)
+dash.register_page(__name__, path='/tg-ftir-analysis', name='Evolved Gas Analysis (EGA)', order=1)
 dash._dash_renderer._set_react_version('18.2.0')
 
 load_dotenv()
@@ -78,7 +78,7 @@ layout = dmc.MantineProvider(
                     }
                 ),
                 html.H2(
-                    "TG-FTIR Data Manager",
+                    "EGA Data Manager",
                     className="text-center mb-3",
                     style={
                         "fontWeight": "bold",

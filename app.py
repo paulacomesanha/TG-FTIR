@@ -49,8 +49,8 @@ SIDEBAR_STYLE_COLLAPSED = {**SIDEBAR_STYLE_BASE, "width": SIDEBAR_WIDTH_COLLAPSE
 def generate_sidebar_nav_links(is_open):
     link_items = [
         {"href": "/", "icon": "fas fa-home", "text": "Home"},
-        {"href": "/tg-comparison", "icon": "fas fa-thermometer-half", "text": "TG Comparison"},
-        {"href": "/tg-ftir-analysis", "icon": "fas fa-chart-line", "text": "TG-FTIR Analysis"},    
+        {"href": "/tg-comparison", "icon": "fas fa-thermometer-half", "text": "Thermogravimetric Analysis"},
+        {"href": "/tg-ftir-analysis", "icon": "fas fa-chart-line", "text": "Evolved Gas Analysis"},    
     ]
     nav_links = []
     for item in link_items:
