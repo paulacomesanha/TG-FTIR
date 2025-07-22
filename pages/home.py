@@ -44,7 +44,7 @@ layout = dbc.Container(
         ),
         dbc.Card(
             dbc.CardBody([
-                html.H1("TG-FTIR INTERACTIVE SYSTEM", className= "display-3 text-center mb-3", style={"fontWeight": 600}),
+                html.H1("TG-FTIR SYSTEM", className= "display-3 text-center mb-3", style={"fontWeight": 600}),
                 build_buttons_row()
             ], style={"overflow": "visible"}),
             style={**CARD_STYLE, "marginTop": "2rem", "overflow": "visible"}
