@@ -5,7 +5,7 @@ import dash_bootstrap_components as dbc
 from threading import Timer
 import webbrowser
 import socket
-from tg_ftir_module import register_callbacks
+from home_dashboard import register_callbacks
 
 # --- Helper functions ---
 def find_free_port():

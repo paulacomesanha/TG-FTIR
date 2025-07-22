@@ -2,7 +2,7 @@ import dash
 from dash import html
 import dash_bootstrap_components as dbc
 
-from tg_ftir_module import build_buttons_row, build_modals
+from home_dashboard import build_buttons_row, build_modals
 
 dash.register_page(__name__, path='/', name='Home', order=0)
 
