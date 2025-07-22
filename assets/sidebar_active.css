@@ -1,0 +1,12 @@
+/* assets/sidebar_active.css */
+.nav-link {
+    color: #08417e !important;   /* Color para las opciones NO activas */
+    font-weight: normal;
+    background: none;
+}
+.nav-link.active, .nav-link.active:focus, .nav-link.active:hover {
+    background-color: #08417e !important;
+    color: #fff !important;
+    border-radius: 0.5rem;
+    font-weight: bold;
+}

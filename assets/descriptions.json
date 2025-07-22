@@ -1,0 +1,19 @@
+{
+  "ftir": {
+    "general": "**FTIR Spectrometer**\n\nDevice that uses the Fourier Transform to analyze the infrared radiation absorbed or transmitted by a sample, providing information about its molecular composition and chemical structure. The Fourier Transform is a mathematical tool that converts a signal from the time (or spatial) domain to the frequency domain. In other words, it breaks down a complex signal into a sum of simpler sinusoidal signals, each with a specific frequency and amplitude.",
+    "source": "**Infrared Radiation Source**\n\nEmits a continuous and stable beam of infrared radiation that covers a specific range of wavelengths of interest (typically from 2.5 µm to 25 µm, i.e., 4,000–400 cm⁻¹). This beam interacts with the molecules in the sample, which absorb certain wavelengths depending on their chemical structure.",
+    "interferometer": "**Interferometer**\n\nBreaks down the continuous radiation into modulated signals through constructive and destructive interference using a KBr beam splitter along with a moving mirror and a fixed mirror. The beam splitter is the central element of the interferometer; it divides the incoming infrared radiation beam into two identical beams (one transmitted and one reflected) and directs each to a different mirror. The fixed mirror returns the beam with a constant wavelength, while the moving mirror varies its position and thus the optical path difference (ΔOPD) between the two beams. The two beams are then recombined, with their phase-shift information encoded in the interferogram. The modulated beam passes through the sample cell, where the sample selectively absorbs at certain frequencies, attenuating the interferogram in those bands and directing it to the detector.",
+    "data": "**Data Acquisition and Processing System**\n\nSamples the analog interferogram coming from the detector by digitizing the signal with high resolution and sampling frequency (>40 kHz) to match the mirror speed. It applies windowing functions (apodization) and processes the data using Fast Fourier Transform (FFT) to convert the interferogram into an absorbance/transmittance spectrum as a function of wavenumber.",
+    "detector": "**Detector**\n\nConverts the modulated infrared radiation signal (interferogram) into an electrical signal proportional to the intensity, so it can be analyzed by the data acquisition system to obtain information about the molecular composition of the sample."
+  },
+  "tga": {
+    "general": "**Thermogravimetric Analyzer (TG)**\n\nDevice that uses the analytical technique of thermogravimetry, which measures the change in mass of a sample as a function of temperature or time, providing information on thermal stability, composition, and chemical reactions of materials.",
+    "data": "**Data Acquisition and Processing System**\n\nSimultaneously digitizes and stores the mass and temperature signals, which are processed in real time to generate TG curves (mass loss vs. T) and DTG curves (mass derivative vs. T).",
+    "balance": "**Thermobalance**\n\nRecords the mass of the sample throughout the thermal program, detecting mass losses or gains in the nanogram range across the entire temperature range.",
+    "furnace": "**Furnace**\n\nProvides a controlled thermal environment with precise heating and cooling rates, ensuring temperature uniformity and stability in the analysis zone, reaching up to 1600°C.",
+    "regulator": "**Temperature Controller**\n\nDefines and executes precise thermal profiles (ramps, isotherms, and multiple cycles) reproducibly thanks to a PID controller that adjusts the heater power to accurately follow the desired profile (e.g., 0.1–200 °C/min)."
+  },
+ "transfer": "Physical and thermal bridge that connects the TG and the FTIR. It transports the gases and vapors generated in the thermobalance to the sample cell of the spectrometer, preventing them from condensing or reacting along the way."
+
+}
+

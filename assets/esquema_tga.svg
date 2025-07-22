@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Capa_2" data-name="Capa 2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 404.3 200.86">
+  <defs>
+    <style>
+      .cls-1 {
+        font-size: 10px;
+      }
+
+      .cls-1, .cls-2, .cls-3 {
+        fill: #1d1d1b;
+        font-family: Helvetica, Helvetica;
+      }
+
+      .cls-2 {
+        font-size: 12.44px;
+      }
+
+      .cls-4 {
+        letter-spacing: -.11em;
+      }
+
+      .cls-3 {
+        font-size: 12px;
+      }
+
+      .cls-5 {
+        fill: none;
+      }
+
+      .cls-5, .cls-6 {
+        stroke: #1d1d1b;
+        stroke-miterlimit: 10;
+      }
+
+      .cls-6 {
+        fill: #fff;
+      }
+    </style>
+  </defs>
+  <g id="Capa_1-2" data-name="Capa 1">
+    <g>
+      <g>
+        <ellipse class="cls-5" cx="199.82" cy="98.68" rx="129.65" ry="75.41"/>
+        <ellipse class="cls-5" cx="200.46" cy="98.68" rx="150" ry="87.25"/>
+      </g>
+      <g>
+        <rect class="cls-6" x="145.96" y="80.16" width="115" height="45" rx="12.22" ry="12.22"/>
+        <text class="cls-2" transform="translate(168.24 107.85) scale(.97 1)"><tspan x="0" y="0">Components</tspan></text>
+      </g>
+      <g>
+        <rect class="cls-6" x="145.96" y=".5" width="115" height="45" rx="12.22" ry="12.22"/>
+        <text class="cls-3" transform="translate(184.39 28.23)"><tspan x="0" y="0">Furnace</tspan></text>
+      </g>
+      <g>
+        <rect class="cls-6" x=".5" y="80.16" width="115" height="45" rx="12.22" ry="12.22"/>
+        <text class="cls-2" transform="translate(15.79 107.08) scale(.97 1)"><tspan x="0" y="0">Thermobalance</tspan></text>
+      </g>
+      <g>
+        <rect class="cls-6" x="288.8" y="80.16" width="115" height="45" rx="12.22" ry="12.22"/>
+        <text class="cls-2" transform="translate(311.86 101.34) scale(.97 1)"><tspan class="cls-4" x="0" y="0">T</tspan><tspan x="6.22" y="0">emperature </tspan><tspan x="11.06" y="14.93">controller</tspan></text>
+      </g>
+      <g>
+        <rect class="cls-6" x="145.96" y="155.36" width="115" height="45" rx="12.22" ry="12.22"/>
+        <text class="cls-1" transform="translate(166.31 174.64)"><tspan x="0" y="0">Data adquisition </tspan><tspan x="-15.28" y="12">and Processing System</tspan></text>
+      </g>
+    </g>
+  </g>
+</svg>
