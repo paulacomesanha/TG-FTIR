@@ -8,29 +8,31 @@ with open("assets/descriptions.json", encoding="utf8") as f:
     desc = json.load(f)
 
 FTIR_POINTS = {
-    "source":         {"pos": {"bottom": "403px", "left": "173.5px"},  "text": desc["ftir"]["source"]},
+    "source":         {"pos": {"bottom": "300px", "left": "50px"},  "text": desc["ftir"]["source"]},
     "interferometer": {"pos": {"bottom": "270px", "left": "175px"},    "text": desc["ftir"]["interferometer"]},
     "data":           {"pos": {"bottom": "130px", "left": "455.5px"},  "text": desc["ftir"]["data"]},
     "detector":       {"pos": {"bottom": "295.5px", "left": "455.5px"}, "text": desc["ftir"]["detector"]},
 }
 TGA_POINTS = {
     "data1":     {"pos": {"bottom": "345px", "left": "281px"},  "text": desc["tga"]["data"]},
-    "thermo":    {"pos": {"bottom": "190px", "left": "440px"},  "text": desc["tga"]["thermobalance"]},
+    "thermo":    {"pos": {"bottom": "190px", "left": "440px"},  "text": desc["tga"]["balance"]},
     "furnace":   {"pos": {"bottom": "238px", "left": "179px"},  "text": desc["tga"]["furnace"]},
-    "tempctrl":  {"pos": {"bottom": "345px", "left": "440px"},  "text": desc["tga"]["tempctrl"]},
+    "tempctrl":  {"pos": {"bottom": "345px", "left": "440px"},  "text": desc["tga"]["regulator"]},
 }
 
 # ------------------------------------------------------------------
 # NUEVO: solo la fila de botones (para la card en Home)
 # ------------------------------------------------------------------
 def build_buttons_row():
-    return dbc.Row(
-        [
-            dbc.Col(dbc.Button("FTIR", id="open-ftir", n_clicks=0, color="primary"), width="auto"),
-            dbc.Col(dbc.Button("Transfer line", id="open-transfer", n_clicks=0, color="secondary"), width="auto"),
-            dbc.Col(dbc.Button("TG", id="open-tga", n_clicks=0, color="primary"), width="auto"),
-        ],
-        className="g-2 justify-content-center my-3"
+    # Contenedor relativo para poder posicionar botones absolutos
+    return html.Div(
+        id="hero-wrap",
+        children=[
+            html.Img(src="/assets/tga_ftir.svg", id="hero-img"),
+            dbc.Button("FTIR", id="open-ftir", n_clicks=0, className="btn-hero btn btn-primary"),
+            dbc.Button("Transfer line", id="open-transfer", n_clicks=0, className="btn-hero btn btn-secondary"),
+            dbc.Button("TG", id="open-tga", n_clicks=0, className="btn-hero btn btn-primary"),
+        ]
     )
 
 # ------------------------------------------------------------------
@@ -92,7 +94,6 @@ def build_modals():
                 html.Button(id="close-transfer", n_clicks=0, className="btn-close", **{"aria-label": "Close"})
             ], close_button=False),
             dbc.ModalBody(html.Div([
-                html.Img(src="/assets/transfer_line.svg", style={"width": "100%", "maxWidth": "600px"}),
                 html.P(desc["transfer"])
             ])),
         ], id="modal-transfer", size="lg", centered=True)

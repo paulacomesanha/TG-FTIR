@@ -2,7 +2,7 @@ import dash
 from dash import html
 import dash_bootstrap_components as dbc
 
-from tg_ftir_module import build_dashboard_body, build_modals
+from tg_ftir_module import build_buttons_row, build_modals
 
 dash.register_page(__name__, path='/', name='Home', order=0)
 
@@ -45,7 +45,7 @@ layout = dbc.Container(
         dbc.Card(
             dbc.CardBody([
                 html.H1("TG-FTIR INTERACTIVE SYSTEM", className= "display-3 text-center mb-3", style={"fontWeight": 600}),
-                build_dashboard_body()
+                build_buttons_row()
             ], style={"overflow": "visible"}),
             style={**CARD_STYLE, "marginTop": "2rem", "overflow": "visible"}
         ),

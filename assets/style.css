@@ -22,3 +22,37 @@
   background-size: contain;
   background-repeat: no-repeat;
 }
+/* Contenedor de la imagen principal */
+#hero-wrap{
+  position: relative;
+  max-width: 1100px;   /* ajusta según tu layout */
+  margin: 0 auto;
+}
+
+/* Imagen */
+#hero-img{
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Estilo base de los botones */
+.btn-hero{
+  position: absolute;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  z-index: 2;
+  box-shadow: 0 4px 12px rgba(0,0,0,.25);
+}
+
+/* POSICIONES (ajusta top/left a tu gusto) */
+#open-ftir{      left: 18%;  top: 63%; }
+#open-transfer{  left: 50%;  top: 12%; }
+#open-tga{       left: 82%;  top: 68%; }
+
+/* Responsive opcional */
+@media (max-width: 576px){
+  #open-ftir{     left: 20%; top: 70%; font-size: .7rem; padding: .25rem .5rem; }
+  #open-transfer{ left: 50%; top: 18%; font-size: .7rem; padding: .25rem .5rem; }
+  #open-tga{      left: 80%; top: 74%; font-size: .7rem; padding: .25rem .5rem; }
+}
