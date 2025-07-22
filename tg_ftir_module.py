@@ -8,16 +8,16 @@ with open("assets/descriptions.json", encoding="utf8") as f:
     desc = json.load(f)
 
 FTIR_POINTS = {
-    "source":         {"pos": {"bottom": "300px", "left": "50px"},  "text": desc["ftir"]["source"]},
-    "interferometer": {"pos": {"bottom": "270px", "left": "175px"},    "text": desc["ftir"]["interferometer"]},
-    "data":           {"pos": {"bottom": "130px", "left": "455.5px"},  "text": desc["ftir"]["data"]},
-    "detector":       {"pos": {"bottom": "295.5px", "left": "455.5px"}, "text": desc["ftir"]["detector"]},
+    "source":         {"pos": {"bottom": "308.5px", "left": "-92.5px"},  "text": desc["ftir"]["source"]},
+    "interferometer": {"pos": {"bottom": "196px", "left": "-92.5px"},    "text": desc["ftir"]["interferometer"]},
+    "data":           {"pos": {"bottom": "77px", "left": "149.5px"},  "text": desc["ftir"]["data"]},
+    "detector":       {"pos": {"bottom": "217px", "left": "149.5px"}, "text": desc["ftir"]["detector"]},
 }
 TGA_POINTS = {
-    "data1":     {"pos": {"bottom": "345px", "left": "281px"},  "text": desc["tga"]["data"]},
-    "thermo":    {"pos": {"bottom": "190px", "left": "440px"},  "text": desc["tga"]["balance"]},
-    "furnace":   {"pos": {"bottom": "238px", "left": "179px"},  "text": desc["tga"]["furnace"]},
-    "tempctrl":  {"pos": {"bottom": "345px", "left": "440px"},  "text": desc["tga"]["regulator"]},
+    "data1":     {"pos": {"bottom": "239px", "left": "-0.5px"},  "text": desc["tga"]["data"]},
+    "thermo":    {"pos": {"bottom": "30px", "left": "-0.5px"},  "text": desc["tga"]["balance"]},
+    "furnace":   {"pos": {"bottom": "89.5px", "left": "-0.5px"},  "text": desc["tga"]["furnace"]},
+    "tempctrl":  {"pos": {"bottom": "117px", "left": "-0.5px"},  "text": desc["tga"]["regulator"]},
 }
 
 # ------------------------------------------------------------------
@@ -51,11 +51,11 @@ def build_modals():
     def modal(prefix, title, esquema_img, diagrama_img, points_dict, general_text):
         buttons = [
             html.Button(
-                "●",
+                "",
                 id=f"{prefix}-btn-{key}",
                 n_clicks=0,
                 style={"position": "absolute", "cursor": "pointer", **pt["pos"]},
-                className="btn btn-link p-0 text-danger fs-5"
+                className="floating-circle"
             )
             for key, pt in points_dict.items()
         ]
