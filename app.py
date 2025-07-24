@@ -6,7 +6,7 @@ from threading import Timer
 import webbrowser
 import socket
 from home_dashboard import register_callbacks
-import pandas as pd
+
 # --- Helper functions ---
 def find_free_port():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
