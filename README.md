@@ -24,7 +24,8 @@ It includes a collapsible sidebar, unified legend with per-trace visibility, **W
 ---
 
 ## 🗂 Project Structure
-```
+
+```bash
 project/
 ├─ app.py                         # App shell, sidebar, layout
 ├─ pages/
@@ -68,6 +69,7 @@ pip install dash dash-bootstrap-components dash-mantine-components plotly \
 ## 🔐 Environment (optional)
 
 Create a `.env` if you want to enable the **FTIR expert chat**:
+
 ```ini
 OPENAI_API_KEY=sk-xxxxxxxxxxxxx
 ```
@@ -90,34 +92,34 @@ The app finds a free port and opens your browser automatically (e.g., `http://12
 
 ## 📥 Data Formats
 
-**TG CSV (used in both pages)**
+### TG CSV (used in both pages)
 
 Expected columns (by index):
 
-  - `time` at **col 0** (minutes; converted to seconds as time*60 in EGA),
+- `time` at **col 0** (minutes; converted to seconds as time*60 in EGA),
 
-  - `mass` at **col 1** (mg),
+- `mass` at **col 1** (mg),
 
-  - `program temperature` at **col 3** (°C),
+- `program temperature` at **col 3** (°C),
 
-  - `sample temperature` at **col 4** (°C).
+- `sample temperature` at **col 4** (°C).
 
 In **TG Comparison**, if the file has ≥ **5 columns**, it uses **col 4** as `Temperature` and **col 1** as `Mass`.
 If fewer, it falls back to **col 0** as generic `X_Value` and **col 1** as `Mass`.
 
-**GS XLSX (EGA only)**
+### GS XLSX (EGA only)
 
-  - Read with `pandas.read_excel(..., skiprows=4)`.
+- Read with `pandas.read_excel(..., skiprows=4)`.
 
-  - Uses **col 0** as time (s) and **col 1** as signal.
+- Uses **col 0** as time (s) and **col 1** as signal.
 
-**FTIR CSV (EGA only)**
+### FTIR CSV (EGA only)
 
-  - Parsed with **semicolon** (`;`) delimiter.
+- Parsed with **semicolon** (`;`) delimiter.
 
-  - All commas are converted to dots (`str.replace(',', '.')`) then cast to float.
+- All commas are converted to dots (`str.replace(',', '.')`) then cast to float.
 
-  - The file is transposed so time ends up in a column named `Time (s)`, and **wavenumbers** are the remaining columns.
+- The file is transposed so time ends up in a column named `Time (s)`, and **wavenumbers** are the remaining columns.
 
 ---
 
@@ -125,9 +127,9 @@ If fewer, it falls back to **col 0** as generic `X_Value` and **col 1** as `Mass
 
 Both pages include a **Walkthrough** button (next to the Refresh icon) that preloads local demo files.
 
-  - **TG Comparison** (`pages/tg_comparison.py`): edit `WALKTHROUGH_FILES` to point to your two CSVs.
+- **TG Comparison** (`pages/tg_comparison.py`): edit `WALKTHROUGH_FILES` to point to your two CSVs.
 
-  - **EGA** (`pages/tg_ftir_analysis.py`): edit `EGA_WALKTHROUGH` to point to your TG CSV, GS XLSX, and FTIR CSV.
+- **EGA** (`pages/tg_ftir_analysis.py`): edit `EGA_WALKTHROUGH` to point to your TG CSV, GS XLSX, and FTIR CSV.
 
 Example (EGA):
 
@@ -146,20 +148,20 @@ EGA_WALKTHROUGH = {
 
 ## 🛠 Troubleshooting
 
-**Nothing happens on Walkthrough**:
+### Nothing happens on Walkthrough
 
-  - Check the paths in `WALKTHROUGH_FILES` / `EGA_WALKTHROUGH`.
+- Check the paths in `WALKTHROUGH_FILES` / `EGA_WALKTHROUGH`.
 
-  - Ensure files exist under `assets/walkthrough/`.
+- Ensure files exist under `assets/walkthrough/`.
 
-**FTIR CSV not read**
+### FTIR CSV not read
 
-  - It expects `;`(semicolon) delimiter and decimals with `,`or `.` (commas are converted).
+- It expects `;`(semicolon) delimiter and decimals with `,`or `.` (commas are converted).
 
-**Graphs don't appear**
+### Graphs don't appear
 
-  - EGA requires **all three** files (TG/GS/FTIR). TG Comparison requires at least one CSV.
+- EGA requires **all three** files (TG/GS/FTIR). TG Comparison requires at least one CSV.
 
-**OpenAI error in chat**
+### OpenAI error in chat
 
-  - Set `OPENAI_API_KEY` in `.env` and restart the app.
+- Set `OPENAI_API_KEY` in `.env` and restart the app.

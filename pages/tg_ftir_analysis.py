@@ -115,7 +115,7 @@ layout = dmc.MantineProvider(
                 html.Button(
                     html.I(className="fa-solid fa-book"),
                     id="walkthrough-btn-ega",
-                    title="Cargar ejemplos (walkthrough)",
+                    title="Walkthrough",
                     n_clicks=0,
                     style={
                         "fontSize": "24px",

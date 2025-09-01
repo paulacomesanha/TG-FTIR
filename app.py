@@ -95,9 +95,9 @@ app.layout = dmc.MantineProvider(
                     html.Button(
                         html.I(id="sidebar-toggle-icon", className="fas fa-times"),
                         id="btn_sidebar_toggle",
-                        className="btn btn-light",
+                        className="sidebar-toggle-btn",
                         style={
-                            "fontSize": "1.2rem", "padding": "0.3rem 0.6rem",
+                            "fontSize": "1.2rem",
                             "position": "absolute", "top": "10px", "right": "10px",
                         }
                     ),

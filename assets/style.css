@@ -56,3 +56,47 @@
   #open-transfer{ left: 50%; top: 18%; font-size: .7rem; padding: .25rem .5rem; }
   #open-tga{      left: 80%; top: 74%; font-size: .7rem; padding: .25rem .5rem; }
 }
+
+/* ===== Sidebar toggle (matches sidebar styling) ===== */
+#sidebar .sidebar-toggle-btn{
+  /* Colores coherentes con tu sidebar */
+  background-color: #e9ecef;     /* mismo fondo del sidebar */
+  color: #343a40;                /* icono oscuro */
+  border: 0px solid #dee2e6;     /* mismo borde del sidebar */
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;           /* “squircle” */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow: none;
+  outline: none;
+  cursor: pointer;
+  transition: background-color .2s ease, transform .08s ease;
+}
+
+#sidebar .sidebar-toggle-btn:hover{
+  background-color: #dfe3e7;     /* un poco más oscuro al pasar el ratón */
+}
+
+#sidebar .sidebar-toggle-btn:active{
+  transform: scale(0.98);
+}
+
+/* Tamaño del icono Font Awesome */
+#sidebar .sidebar-toggle-btn .fa-times,
+#sidebar .sidebar-toggle-btn .fa-bars{
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* ===== Variante acento (si lo quieres en azul #08417e) ===== */
+#sidebar .sidebar-toggle-btn--primary{
+  background-color: #08417e;
+  border-color: #063a6f;
+  color: #ffffff;
+}
+#sidebar .sidebar-toggle-btn--primary:hover{
+  background-color: #0a4c94;
+}
