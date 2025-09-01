@@ -24,7 +24,7 @@ It includes a collapsible sidebar, unified legend with per-trace visibility, **W
 ---
 
 ## 🗂 Project Structure
-
+```
 project/
 ├─ app.py                         # App shell, sidebar, layout
 ├─ pages/
@@ -46,7 +46,7 @@ project/
 │     ├─ GS_example.xlsx
 │     └─ FTIR_example.csv
 └─ .env                           # OPENAI_API_KEY (optional)
-
+```
 
 Dash automatically serves everything inside `assets/`.
 
@@ -68,7 +68,7 @@ pip install dash dash-bootstrap-components dash-mantine-components plotly \
 ## 🔐 Environment (optional)
 
 Create a `.env` if you want to enable the **FTIR expert chat**:
-``ìni
+```ini
 OPENAI_API_KEY=sk-xxxxxxxxxxxxx
 ```
 
@@ -107,17 +107,19 @@ If fewer, it falls back to **col 0** as generic `X_Value` and **col 1** as `Mass
 
 **GS XLSX (EGA only)**
 
-Read with `pandas.read_excel(..., skiprows=4)`.
+  - Read with `pandas.read_excel(..., skiprows=4)`.
 
-Uses **col 0** as time (s) and **col 1** as signal.
+  - Uses **col 0** as time (s) and **col 1** as signal.
 
 **FTIR CSV (EGA only)**
 
-Parsed with **semicolon** (`;`) delimiter.
+  - Parsed with **semicolon** (`;`) delimiter.
 
-All commas are converted to dots (`str.replace(',', '.')`) then cast to float.
+  - All commas are converted to dots (`str.replace(',', '.')`) then cast to float.
 
-The file is transposed so time ends up in a column named `Time (s)`, and **wavenumbers** are the remaining columns.
+  - The file is transposed so time ends up in a column named `Time (s)`, and **wavenumbers** are the remaining columns.
+
+---
 
 ## 🧭 Walkthrough (demo files)
 
@@ -139,6 +141,8 @@ EGA_WALKTHROUGH = {
 ```
 
   If any file is missing, the Walkthrough does nothing (to avoid breaking the flow).
+
+---
 
 ## 🛠 Troubleshooting
 
