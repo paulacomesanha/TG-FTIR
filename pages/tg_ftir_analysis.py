@@ -14,14 +14,17 @@ from scipy.signal import savgol_filter
 import openai
 from dotenv import load_dotenv
 import os
+from pathlib import Path
 
 
 
 dash.register_page(__name__, path='/tg-ftir-analysis', name='Evolved Gas Analysis (EGA)', order=1)
 dash._dash_renderer._set_react_version('18.2.0')
 
+
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
 
 
 def decode_file(contents, file_type='csv'):
