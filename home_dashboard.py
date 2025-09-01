@@ -10,21 +10,17 @@ with open("assets/descriptions.json", encoding="utf8") as f:
 FTIR_POINTS = {
     "source":         {"pos": {"bottom": "308.5px", "left": "-92.5px"},  "text": desc["ftir"]["source"]},
     "interferometer": {"pos": {"bottom": "196px", "left": "-92.5px"},    "text": desc["ftir"]["interferometer"]},
-    "data":           {"pos": {"bottom": "77px", "left": "149.5px"},  "text": desc["ftir"]["data"]},
-    "detector":       {"pos": {"bottom": "217px", "left": "149.5px"}, "text": desc["ftir"]["detector"]},
+    "data":           {"pos": {"bottom": "77px", "left": "149.5px"},     "text": desc["ftir"]["data"]},
+    "detector":       {"pos": {"bottom": "217px", "left": "149.5px"},    "text": desc["ftir"]["detector"]},
 }
 TGA_POINTS = {
-    "data1":     {"pos": {"bottom": "239px", "left": "-0.5px"},  "text": desc["tga"]["data"]},
-    "thermo":    {"pos": {"bottom": "30px", "left": "-0.5px"},  "text": desc["tga"]["balance"]},
-    "furnace":   {"pos": {"bottom": "89.5px", "left": "-0.5px"},  "text": desc["tga"]["furnace"]},
-    "tempctrl":  {"pos": {"bottom": "117px", "left": "-0.5px"},  "text": desc["tga"]["regulator"]},
+    "data1":    {"pos": {"bottom": "239px", "left": "-0.5px"},  "text": desc["tga"]["data"]},
+    "thermo":   {"pos": {"bottom": "30px",  "left": "-0.5px"},  "text": desc["tga"]["balance"]},
+    "furnace":  {"pos": {"bottom": "89.5px","left": "-0.5px"},  "text": desc["tga"]["furnace"]},
+    "tempctrl": {"pos": {"bottom": "117px", "left": "-0.5px"},  "text": desc["tga"]["regulator"]},
 }
 
-# ------------------------------------------------------------------
-# NUEVO: solo la fila de botones (para la card en Home)
-# ------------------------------------------------------------------
 def build_buttons_row():
-    # Contenedor relativo para poder posicionar botones absolutos
     return html.Div(
         id="hero-wrap",
         children=[
@@ -35,18 +31,9 @@ def build_buttons_row():
         ]
     )
 
-# ------------------------------------------------------------------
-# (Antiguo) cuerpo completo con imágenes inline. Ya NO lo usaremos en Home.
-# Lo dejo por si quieres reutilizarlo en otra página.
-# ------------------------------------------------------------------
 def build_dashboard_body():
-    """Cuerpo completo con imágenes y puntos visibles (no modal)."""
-    # ... (DEJA TU IMPLEMENTACIÓN ORIGINAL SI LA NECESITAS)
     return html.Div("Deprecated in Home. Usa build_buttons_row().")
 
-# ------------------------------------------------------------------
-# Modales (sin cambios importantes)
-# ------------------------------------------------------------------
 def build_modals():
     def modal(prefix, title, esquema_img, diagrama_img, points_dict, general_text):
         buttons = [
@@ -84,24 +71,17 @@ def build_modals():
         )
 
     return [
-        modal("ftir", "FTIR Spectrometer", "esquema_ftir.svg", "diagrama_ftir.svg",
-              FTIR_POINTS, desc["ftir"]["general"]),
-        modal("tga", "TG Analyzer", "esquema_tga.svg", "diagrama_tga.svg",
-              TGA_POINTS, desc["tga"]["general"]),
+        modal("ftir", "FTIR Spectrometer", "esquema_ftir.svg", "diagrama_ftir.svg", FTIR_POINTS, desc["ftir"]["general"]),
+        modal("tga", "TG Analyzer", "esquema_tga.svg", "diagrama_tga.svg", TGA_POINTS, desc["tga"]["general"]),
         dbc.Modal([
             dbc.ModalHeader([
                 dbc.ModalTitle("Transfer line"),
                 html.Button(id="close-transfer", n_clicks=0, className="btn-close", **{"aria-label": "Close"})
             ], close_button=False),
-            dbc.ModalBody(html.Div([
-                html.P(desc["transfer"])
-            ])),
+            dbc.ModalBody(html.Div([html.P(desc["transfer"])])),
         ], id="modal-transfer", size="lg", centered=True)
     ]
 
-# ------------------------------------------------------------------
-# Callbacks
-# ------------------------------------------------------------------
 def register_callbacks(app):
     # Abrir/cerrar modales
     def toggle(prefix):
@@ -112,9 +92,10 @@ def register_callbacks(app):
             prevent_initial_call=False
         )
         def _toggle(open_clicks, close_clicks, is_open):
+            # En primera carga, mantén cerrado
             if ctx.triggered_id is None:
                 return False
-            return not is_open
+            return not bool(is_open)
 
     for p in ["ftir", "tga", "transfer"]:
         toggle(p)

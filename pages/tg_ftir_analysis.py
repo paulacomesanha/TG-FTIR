@@ -3,29 +3,25 @@ from dash import dcc, html, Input, Output, State, ctx
 import dash_bootstrap_components as dbc
 from dash.exceptions import PreventUpdate
 import pandas as pd
-import dash_daq as daq
-import base64
-import io
-from dash import dash_table
 import dash_mantine_components as dmc
 import numpy as np
 import plotly.graph_objs as go
 from scipy.signal import savgol_filter
+import base64
+import io
+from dash import dash_table
+import dash_daq as daq
 import openai
 from dotenv import load_dotenv
 import os
 from pathlib import Path
-
-
+import ast
 
 dash.register_page(__name__, path='/tg-ftir-analysis', name='Evolved Gas Analysis (EGA)', order=1)
-dash._dash_renderer._set_react_version('18.2.0')
-
 
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-
+openai.api_key = OPENAI_API_KEY
 
 def decode_file(contents, file_type='csv'):
     content_type, content_string = contents.split(',')
@@ -33,10 +29,13 @@ def decode_file(contents, file_type='csv'):
     if file_type == 'xlsx':
         return io.BytesIO(decoded)
     elif file_type == 'csv':
-        return io.StringIO(decoded.decode('ISO-8859-1'))
+        try:
+            return io.StringIO(decoded.decode('utf-8'))
+        except UnicodeDecodeError:
+            return io.StringIO(decoded.decode('ISO-8859-1'))
     else:
         raise ValueError("Unsupported file type")
-    
+
 def calc_smooth_derivative(x, y, window_length=21, polyorder=2):
     if window_length >= len(y):
         window_length = len(y) - 1 if len(y) % 2 == 0 else len(y)
@@ -193,7 +192,7 @@ layout = dmc.MantineProvider(
                         className="shadow p-3 mb-4 rounded",
                         style={
                             "backgroundColor": "rgba(255,255,255,0.85)",
-                            "height": "520px",  # <-- Fuerza altura igual
+                            "height": "520px",
                             "display": "flex",
                             "flexDirection": "column",
                             "justifyContent": "center"
@@ -222,10 +221,10 @@ layout = dmc.MantineProvider(
                                         type="number",
                                         min=0,
                                         step=0.01,
-                                        debounce=True,  # <-- Solo actualiza al pulsar Enter o salir del campo
+                                        debounce=True,
                                         style={
                                             "width": "110px",
-                                            "borderRadius": "16px",  # Bordes circulares
+                                            "borderRadius": "16px",
                                             "border": "1.5px solid #1976d2",
                                             "padding": "6px 12px",
                                             "fontSize": "1rem",
@@ -240,7 +239,7 @@ layout = dmc.MantineProvider(
                         className="shadow p-3 mb-4 rounded",
                         style={
                             "backgroundColor": "rgba(255,255,255,0.85)",
-                            "height": "520px",  # <-- Fuerza altura igual
+                            "height": "520px",
                             "display": "flex",
                             "flexDirection": "column",
                             "justifyContent": "center"
@@ -294,82 +293,79 @@ layout = dmc.MantineProvider(
                 ),
                 className='mt-4'
             ),
-            
         ]),
         dbc.Row([
-    dbc.Col(
-        html.Div(
-            id="chatbot-container",
-            style={"display": "none", "marginTop": "18px"},
-            children=[
-                dbc.Card(
-                    dbc.CardBody([
-                        html.H5("Chat experto TG-FTIR", className="mb-2", style={"color": "#333"}),
-                        dcc.Loading(
-    id="chat-loading",
-    type="circle",  # Spinner circular tipo "luna"
-    color="#444444",  # Azul, puedes cambiar el color si quieres
-    fullscreen=False,  # Solo cubre el área del chat
-    children=html.Div(
-        id="chat-history",
-        style={
-            "height": "260px",
-            "overflowY": "auto",
-            "background": "#f0f1f3",
-            "borderRadius": "18px",
-            "padding": "14px",
-            "marginBottom": "10px"
-        }
-    )
-),
-                        html.Div([
-                            dcc.Textarea(
-                                id="chat-input",
-                                placeholder="Escribe tu pregunta...",
-                                style={
-                                    "width": "100%",
-                                    "borderRadius": "18px",
-                                    "padding": "12px 48px 12px 12px",
-                                    "resize": "none",
-                                    "minHeight": "40px",
-                                    "maxHeight": "120px",
-                                    "border": "1.5px solid #b0b0b0",
-                                    "fontSize": "1rem",
-                                    "background": "#f8f9fa"
-                                },
-                                rows=1,
-                                autoFocus=True
-                            ),
-                            html.Button(
-                                html.I(className="fa-regular fa-paper-plane"),
-                                id="send-chat",
-                                n_clicks=0,
-                                style={
-                                    "position": "absolute",
-                                    "right": "18px",
-                                    "top": "50%",
-                                    "transform": "translateY(-50%)",
-                                    "border": "none",
-                                    "background": "none",
-                                    "color": "#444",  # Gris oscuro
-                                    "fontSize": "22px",
-                                    "cursor": "pointer"
-                                }
-                            )
-                        ], style={"position": "relative", "width": "100%"})
-                    ]),
-                    className="shadow p-3 mb-4 rounded",
-                    style={"backgroundColor": "#fff"}  # Card blanca
-                )
-            ]
-        ),
-        width=12
-    ),
-], id="chatbot-row"),
+            dbc.Col(
+                html.Div(
+                    id="chatbot-container",
+                    style={"display": "none", "marginTop": "18px"},
+                    children=[
+                        dbc.Card(
+                            dbc.CardBody([
+                                html.H5("Chat experto TG-FTIR", className="mb-2", style={"color": "#333"}),
+                                dcc.Loading(
+                                    id="chat-loading",
+                                    type="circle",
+                                    color="#444444",
+                                    fullscreen=False,
+                                    children=html.Div(
+                                        id="chat-history",
+                                        style={
+                                            "height": "260px",
+                                            "overflowY": "auto",
+                                            "background": "#f0f1f3",
+                                            "borderRadius": "18px",
+                                            "padding": "14px",
+                                            "marginBottom": "10px"
+                                        }
+                                    )
+                                ),
+                                html.Div([
+                                    dcc.Textarea(
+                                        id="chat-input",
+                                        placeholder="Escribe tu pregunta...",
+                                        style={
+                                            "width": "100%",
+                                            "borderRadius": "18px",
+                                            "padding": "12px 48px 12px 12px",
+                                            "resize": "none",
+                                            "minHeight": "40px",
+                                            "maxHeight": "120px",
+                                            "border": "1.5px solid #b0b0b0",
+                                            "fontSize": "1rem",
+                                            "background": "#f8f9fa"
+                                        },
+                                        rows=1,
+                                        autoFocus=True
+                                    ),
+                                    html.Button(
+                                        html.I(className="fa-regular fa-paper-plane"),
+                                        id="send-chat",
+                                        n_clicks=0,
+                                        style={
+                                            "position": "absolute",
+                                            "right": "18px",
+                                            "top": "50%",
+                                            "transform": "translateY(-50%)",
+                                            "border": "none",
+                                            "background": "none",
+                                            "color": "#444",
+                                            "fontSize": "22px",
+                                            "cursor": "pointer"
+                                        }
+                                    )
+                                ], style={"position": "relative", "width": "100%"})
+                            ]),
+                            className="shadow p-3 mb-4 rounded",
+                            style={"backgroundColor": "#fff"}
+                        )
+                    ]
+                ),
+                width=12
+            ),
+        ], id="chatbot-row"),
     ])
 )
-
-
 
 @dash.callback(
     [Output('tg-status','children'), Output('gs-status','children'), Output('ftir-status','children'), Output('upload-status','data')],
@@ -398,11 +394,10 @@ def update_status(tg_contents, gs_contents, ftir_contents, current_status):
         ftir = pd.read_csv(decode_file(ftir_contents, 'csv'), delimiter=';')
         ftir = ftir.dropna(axis=1, how='all')
         ftir = ftir.dropna(axis=0, how='all')
-
         for col in ftir.columns[0:]:
             ftir[col] = ftir[col].astype(str).str.replace(',', '.').astype(float)
     else:
-        ftir_status = html.Span("⭕", style={"color": "red", "fontSize": "30px"})
+        ftir_status = html.Span("⭕", style={"color": "red", "FontSize": "30px"})
 
     return tg_status, gs_status, ftir_status, current_status
 
@@ -433,10 +428,9 @@ def toggle_gs(n, show):
         Input('manual-time-input', 'value'),
         Input('fixed-ftir-list','data')
     ],
-    #State('manual-time-input', 'value')
 )
 def update_charts(status, show_gs, relayout_data, manual_time, fixed_ftir_list):
-    if not all(status.values()):
+    if not status or not all(status.values()):
         return {'display':'none'}, {}, {}, {}, '', '', None
 
     # TG data
@@ -455,170 +449,75 @@ def update_charts(status, show_gs, relayout_data, manual_time, fixed_ftir_list):
     df_ftir = df_ftir.iloc[1:]
     df_ftir.reset_index(inplace=True)
     df_ftir.rename(columns={df_ftir.columns[0]: 'Time (s)'}, inplace=True)
-
     df_ftir['Time (s)'] = (
-            df_ftir['Time (s)']
-            .astype(str)
-            .str.replace(',', '.')       
-            .astype(float)
+            df_ftir['Time (s)'].astype(str).str.replace(',', '.').astype(float)
         )
 
     wavelengths = [int(col) for col in df_ftir.columns[1:]]
 
-    # Mass-%
     init_mass = masa_loss.max()
     fin_mass = masa_loss.min()
-    norm_mass = 100*(masa_loss-fin_mass)/(init_mass-fin_mass)
+    norm_mass = 100*(masa_loss-fin_mass)/(init_mass-fin_mass) if (init_mass-fin_mass)!=0 else np.zeros_like(masa_loss)
 
-    # Gráfico de pérdida de masa contra temperatura y su derivada
-    y_smooth, deriv = calc_smooth_derivative(sample_temp, norm_mass)
-    deriv_norm = 100 * (deriv - np.min(deriv)) / (np.max(deriv) - np.min(deriv))
+    _, deriv = calc_smooth_derivative(sample_temp, norm_mass)
+    deriv_norm = 100 * (deriv - np.min(deriv)) / (np.max(deriv) - np.min(deriv)) if (np.max(deriv)-np.min(deriv))!=0 else np.zeros_like(deriv)
     fig1 = go.Figure()
-    fig1.add_trace(go.Scatter(
-        x=sample_temp, y=norm_mass, mode='lines', name='TG (%)', line=dict(color='#800000')
-    ))
-    fig1.add_trace(go.Scatter(
-        x=sample_temp, y=deriv_norm, mode='lines', name='d(TG)/dT (normalizado)', line=dict(color='#1f77b4')
-    ))
+    fig1.add_trace(go.Scatter(x=sample_temp, y=norm_mass, mode='lines', name='TG (%)', line=dict(color='#800000')))
+    fig1.add_trace(go.Scatter(x=sample_temp, y=deriv_norm, mode='lines', name='d(TG)/dT (normalizado)', line=dict(color='#1f77b4')))
     fig1.update_layout(
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.35,  # Más abajo para que no se superponga
-            xanchor="center",
-            x=0.5
-        ),
-        yaxis=dict(
-            title='Weight loss (%)',
-            showgrid=True, gridcolor='#ccc', showline=True, linecolor='#999'
-        ),
-        xaxis=dict(
-            title='Temperature (°C)',
-            showgrid=True, gridcolor='#ccc', showline=True, linecolor='#999'
-        ),
-        plot_bgcolor='rgba(0,0,0,0)', 
-        paper_bgcolor='rgba(0,0,0,0)'
+        legend=dict(orientation="h", yanchor="bottom", y=-0.35, xanchor="center", x=0.5),
+        yaxis=dict(title='Weight loss (%)', showgrid=True, gridcolor='#ccc', showline=True, linecolor='#999'),
+        xaxis=dict(title='Temperature (°C)', showgrid=True, gridcolor='#ccc', showline=True, linecolor='#999'),
+        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)'
     )
 
-    # --- Selección de tiempo sincronizada ---
-    ctx_triggered = ctx.triggered_id
-    if ctx_triggered == "manual-time-input" and manual_time is not None:
+    if ctx.triggered_id == "manual-time-input" and manual_time is not None:
         selected_time = float(manual_time)
-    elif ctx_triggered == "time-temp-chart" and relayout_data and ('shapes[0].x0' in relayout_data or 'shapes[0].x1' in relayout_data):
-        if 'shapes[0].x0' in relayout_data:
-            selected_time = relayout_data['shapes[0].x0']
-        else:
-            selected_time = relayout_data['shapes[0].x1']
+    elif ctx.triggered_id == "time-temp-chart" and relayout_data and ('shapes[0].x0' in relayout_data or 'shapes[0].x1' in relayout_data):
+        selected_time = relayout_data.get('shapes[0].x0', relayout_data.get('shapes[0].x1'))
     elif manual_time is not None:
         selected_time = float(manual_time)
     else:
-        selected_time = df_gs['Time (s)'].min()
-    selected_time = np.clip(selected_time, df_gs['Time (s)'].min(), df_gs['Time (s)'].max())
+        selected_time = float(df_gs['Time (s)'].min())
+    selected_time = float(np.clip(selected_time, df_gs['Time (s)'].min(), df_gs['Time (s)'].max()))
 
-    # Gráfico de temperatura (TG) con opción de GS y línea draggable
     traces = [go.Scatter(x=time_tg, y=prog_temp, mode='lines', name='TG Temp', line=dict(color='#006400'))]
     if show_gs:
         traces.append(go.Scatter(x=time_gs, y=trans_gs, mode='lines', name='GS Signal', line=dict(color='#00008B'), yaxis='y2'))
     fig2 = go.Figure(data=traces)
-
-    # Línea vertical draggable
-    fig2.add_shape(
-        type='line', x0=selected_time, x1=selected_time, y0=0, y1=1,
-        xref='x', yref='paper',
-        line=dict(color='red', width=2), editable=True
-    )
-
+    fig2.add_shape(type='line', x0=selected_time, x1=selected_time, y0=0, y1=1, xref='x', yref='paper', line=dict(color='red', width=2), editable=True)
     layout2 = dict(
-        xaxis=dict(
-            title='Time (s)',
-            showgrid=True,
-            gridcolor='#ccc',
-            showline=True,
-            linecolor='#999'
-        ),
-        yaxis=dict(
-            title='Temperature (°C)',
-            showgrid=not show_gs,
-            gridcolor='#ccc',
-            showline=True,
-            linecolor='#006400',
-            tickfont=dict(color='#006400')
-        ),
-        dragmode='drawline',
-        newshape_line_color='red',
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)'
+        xaxis=dict(title='Time (s)', showgrid=True, gridcolor='#ccc', showline=True, linecolor='#999'),
+        yaxis=dict(title='Temperature (°C)', showgrid=not show_gs, gridcolor='#ccc', showline=True, linecolor='#006400', tickfont=dict(color='#006400')),
+        dragmode='drawline', newshape_line_color='red',
+        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+        legend=dict(orientation="h", yanchor="bottom", y=-0.35, xanchor="center", x=0.5)
     )
     if show_gs:
-        layout2['yaxis2'] = dict(
-            overlaying='y',
-            side='right',
-            title='GS Signal',
-            showgrid=False,
-            showline=True,
-            linecolor='#00008B',
-            tickfont=dict(color='#00008B')
-        )
-    fig2.update_layout(**layout2)
-    fig2.update_layout(
-        title="",          # Elimina cualquier título
-        title_text="",    # Elimina cualquier texto de título
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.35,  # Más abajo para que no se superponga
-            xanchor="center",
-            x=0.5
-        ),
-    )
+        layout2['yaxis2'] = dict(overlaying='y', side='right', title='GS Signal', showgrid=False, showline=True, linecolor='#00008B', tickfont=dict(color='#00008B'))
+    fig2.update_layout(**layout2, title="", title_text="")
 
     closest_idx = (df_ftir['Time (s)'] - selected_time).abs().argmin()
-    closest_time = df_ftir['Time (s)'].iloc[closest_idx]
+    closest_time = float(df_ftir['Time (s)'].iloc[closest_idx])
 
-    # Obtenemos fila y espectro
     row_data = df_ftir.iloc[closest_idx]
     spectrum = row_data.iloc[1:].values.astype(float)
     fig_ftir = go.Figure()
-    fig_ftir.add_trace(go.Scatter(
-        x=wavelengths, y=spectrum, mode='lines',
-        name=f'Espectro a {closest_time:.1f}s', line=dict(color='#333')
-    ))
-    # Añadir espectros fijados
+    fig_ftir.add_trace(go.Scatter(x=wavelengths, y=spectrum, mode='lines', name=f'Espectro a {closest_time:.1f}s', line=dict(color='#333')))
     if fixed_ftir_list:
         for i, f in enumerate(fixed_ftir_list):
-            fig_ftir.add_trace(go.Scatter(
-                x=f["x"], y=f["y"], mode='lines',
-                name=f'Fijado {i+1}',
-                line=dict(color=f["color"], width=2)
-            ))
+            fig_ftir.add_trace(go.Scatter(x=f["x"], y=f["y"], mode='lines', name=f'Fijado {i+1}', line=dict(color=f["color"], width=2)))
+    fig_ftir.update_xaxes(title="Wavenumber (cm⁻¹)", autorange='reversed', showgrid=True, gridcolor='#ccc', showline=True, linecolor='#999')
+    fig_ftir.update_yaxes(title="Transmitance (%)", showgrid=True, gridcolor='#ccc', showline=True, linecolor='#999')
+    fig_ftir.update_layout(plot_bgcolor='white', paper_bgcolor='white', showlegend=False, margin=dict(t=20, b=60))
 
-    fig_ftir.update_xaxes(
-            title="Wavenumber (cm⁻¹)",
-            autorange='reversed', showgrid=True,
-            gridcolor='#ccc', showline=True, linecolor='#999'
-        )
-    fig_ftir.update_yaxes(
-            title="Transmitance (%)",
-            showgrid=True, gridcolor='#ccc', showline=True, linecolor='#999'
-        )
-    fig_ftir.update_layout(
-            plot_bgcolor='white', paper_bgcolor='white',
-            showlegend=False, margin=dict(t=20, b=60)
-        )
-
-    # Badge de masa inicial
     badge_text = f"Initial mass: {init_mass:.2f} mg"
-    temp_interp = np.interp(selected_time, time_tg, sample_temp)
-    btn_txt = (
-        f"Selected time (GS): {selected_time:.1f}s | "
-        f"Closest FTIR time: {closest_time:.1f}s | "
-        f"Interpolated temperature (TG): {temp_interp:.1f}°C"
-    )
+    temp_interp = float(np.interp(selected_time, time_tg, sample_temp))
+    btn_txt = f"Selected time (GS): {selected_time:.1f}s | Closest FTIR time: {closest_time:.1f}s | Interpolated temperature (TG): {temp_interp:.1f}°C"
 
-    # El valor del input manual siempre sigue el valor de la barra roja
-    return {'display':'block'}, fig1, fig2, fig_ftir, badge_text, btn_txt, round(float(selected_time), 2)
+    return {'display':'block'}, fig1, fig2, fig_ftir, badge_text, btn_txt, round(selected_time, 2)
 
-from dash import Output, Input, no_update
+from dash import Output as DOutput, Input as DInput  # para evitar colisiones
 
 app = dash.get_app()
 
@@ -631,17 +530,14 @@ app.clientside_callback(
         return null;
     }
     """,
-    Output('refresh-btn', 'n_clicks'),
-    Input('refresh-btn', 'n_clicks')
+    DOutput('refresh-btn', 'n_clicks'),
+    DInput('refresh-btn', 'n_clicks')
 )
-
 
 @dash.callback(
     Output('fixed-ftir-list', 'data'),
-    # Inputs para añadir y para eliminar
     Input('fix-ftir-btn', 'n_clicks'),
     Input({'type': 'remove-fixed-ftir', 'index': dash.ALL}, 'n_clicks'),
-    # States necesarios para la lógica
     State('fixed-ftir-list', 'data'),
     State('ftir-graph', 'figure'),
     State('info-button', 'children'),
@@ -652,37 +548,25 @@ def manage_fixed_ftir_list(add_clicks, remove_clicks, fixed_list, fig, info_text
     if not triggered_id:
         raise PreventUpdate
 
-    # --- Lógica para AÑADIR un espectro ---
     if triggered_id == 'fix-ftir-btn':
         if fig is None or not fig.get('data'):
             raise PreventUpdate
-        
-        # Extraemos los datos del espectro actual (siempre es el primer trazo)
         current_trace = fig['data'][0]
         color = PASTEL_COLORS[len(fixed_list) % len(PASTEL_COLORS)]
-        
         new_fixed_item = {
             "x": current_trace['x'],
             "y": current_trace['y'],
             "label": info_text,
             "color": color
         }
-        # Añadimos el nuevo espectro a la lista existente
         return fixed_list + [new_fixed_item]
 
-    # --- Lógica para ELIMINAR un espectro ---
-    # Comprobamos si el trigger es un botón de eliminación
     if isinstance(triggered_id, dict) and triggered_id.get('type') == 'remove-fixed-ftir':
-        # El botón que se ha pulsado no debe tener 0 clics (caso inicial)
-        button_that_was_clicked_index = triggered_id['index']
-        if remove_clicks[button_that_was_clicked_index] is None or remove_clicks[button_that_was_clicked_index] == 0:
+        idx = triggered_id['index']
+        if not remove_clicks or idx >= len(remove_clicks) or not remove_clicks[idx]:
             raise PreventUpdate
+        return [item for i, item in enumerate(fixed_list) if i != idx]
 
-        # Creamos una nueva lista excluyendo el elemento en el índice del botón pulsado
-        new_list = [item for i, item in enumerate(fixed_list) if i != button_that_was_clicked_index]
-        return new_list
-
-    # Si el trigger no es ni añadir ni eliminar, no hacemos nada
     raise PreventUpdate
 
 @dash.callback(
@@ -719,10 +603,10 @@ def show_chatbot(upload_status):
         return {"display": "block", "marginTop": "18px"}
     return {"display": "none"}
 
-
+# === CHAT EXACTO COMO LO PASASTE (ChatCompletion) ===
 @dash.callback(
     [Output("chat-history", "children"),
-     Output("chat-input", "value")],  # <-- Añade este Output
+     Output("chat-input", "value")],
     [Input("send-chat", "n_clicks"), Input("chat-input", "n_submit")],
     State("chat-input", "value"),
     State("chat-history", "children"),
@@ -740,8 +624,8 @@ def chat_with_expert(n_clicks, n_submit, user_msg, history, ftir_fig, info_text)
     ftir_x, ftir_y = [], []
     if ftir_fig and "data" in ftir_fig and len(ftir_fig["data"]) > 0:
         trace = ftir_fig["data"][0]
-        ftir_x = trace["x"]
-        ftir_y = trace["y"]
+        ftir_x = trace.get("x", [])
+        ftir_y = trace.get("y", [])
 
     # Extrae tiempo y temperatura del info_button
     ftir_time, ftir_temp = "", ""
@@ -754,7 +638,7 @@ def chat_with_expert(n_clicks, n_submit, user_msg, history, ftir_fig, info_text)
     # Calcula hash del FTIR actual
     current_ftir_hash = hash(tuple(ftir_x)) if ftir_x else None
 
-    # Prompt experto
+    # Prompt experto (tu versión)
     system_prompt = (
         "Eres un experto en análisis TG-FTIR y degradación térmica de materiales. "
         "El usuario te preguntará sobre el espectro FTIR mostrado, que corresponde a una muestra en un experimento de degradación térmica. "
@@ -770,14 +654,10 @@ def chat_with_expert(n_clicks, n_submit, user_msg, history, ftir_fig, info_text)
         f"- Transmitancia (Y): {list(ftir_y)}\n"
         "Si necesitas más datos, pídelos al usuario. Si el usuario pregunta por picos, asigna los más probables según la temperatura y el contexto."
     )
-    
-    system_prompt += (
-    "\nPor favor, estructura tu respuesta usando títulos y secciones en Markdown para mayor claridad."
-    )
+    system_prompt += ("\nPor favor, estructura tu respuesta usando títulos y secciones en Markdown para mayor claridad.")
 
     messages = [{"role": "system", "content": system_prompt}]
 
-    # Si el FTIR ha cambiado, añade un mensaje de sistema extra
     if current_ftir_hash != last_ftir_hash:
         messages.append({
             "role": "system",
@@ -792,17 +672,13 @@ def chat_with_expert(n_clicks, n_submit, user_msg, history, ftir_fig, info_text)
         })
         last_ftir_hash = current_ftir_hash
 
-    # Añade el historial como siempre
     if history:
         for h in history:
             if isinstance(h, dict) and "props" in h and "children" in h["props"]:
                 children = h["props"]["children"]
-                # Si es string, es un mensaje del usuario
                 if isinstance(children, str) and children.startswith("Tú:"):
                     messages.append({"role": "user", "content": children[3:].strip()})
-                # Si es lista, busca el texto del usuario o la respuesta del bot
                 elif isinstance(children, list):
-                    # Busca mensaje del usuario
                     for child in children:
                         if hasattr(child, "props") and hasattr(child.props, "children"):
                             content = child.props.children
@@ -813,9 +689,9 @@ def chat_with_expert(n_clicks, n_submit, user_msg, history, ftir_fig, info_text)
 
     messages.append({"role": "user", "content": user_msg})
 
-    # Llama a OpenAI
-    openai.api_key = OPENAI_API_KEY
     try:
+        if not openai.api_key:
+            raise RuntimeError("OPENAI_API_KEY no está configurada.")
         response = openai.ChatCompletion.create(
             model="gpt-4o",
             messages=messages,
@@ -826,7 +702,6 @@ def chat_with_expert(n_clicks, n_submit, user_msg, history, ftir_fig, info_text)
     except Exception as e:
         answer = f"[Error de OpenAI: {e}]"
 
-    # Historial: usuario en burbuja azul, respuesta bot en gris y Markdown
     new_history = (history or []) + [
         html.Div([
             html.I(className="fa-regular fa-user", style={"color": "#1976d2", "marginRight": "6px"}),
@@ -843,7 +718,10 @@ def chat_with_expert(n_clicks, n_submit, user_msg, history, ftir_fig, info_text)
             "marginBottom": "8px", "display": "flex", "alignItems": "flex-start"
         })
     ]
-    return new_history, ""  # <-- Esto limpia el textarea tras cada envío
+    return new_history, ""
+
+
+
 
 
 
