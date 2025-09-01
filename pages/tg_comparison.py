@@ -9,8 +9,29 @@ import plotly.graph_objs as go
 import numpy as np
 from scipy.signal import savgol_filter
 import ast
+from dash.exceptions import PreventUpdate
+from pathlib import Path
 
 dash.register_page(__name__, path='/tg-comparison', name='Thermogravimetric Analysis', order=2)
+
+# =========================
+#  Walkthrough: configura aquí tus CSV de ejemplo
+# =========================
+# Ruta base del proyecto (carpeta donde está app.py)
+BASE_DIR = Path(__file__).resolve().parents[1]
+# Ajusta las rutas/ nombres y delimitadores a tus archivos reales
+WALKTHROUGH_FILES = [
+    {
+        "label": "TG_50CO_50P_R10.csv",
+        "path": BASE_DIR / "assets" / "walkthrough" / "TG_50CO_50P_R10.csv",
+        "delimiter": ","
+    },
+    {
+        "label": "TG_80CO-20ES_R10R5_W6.csv",
+        "path": BASE_DIR / "assets" / "walkthrough" / "TG_80CO-20ES_R10R5_W6.csv",
+        "delimiter": ","
+    },
+]
 
 def decode_csv_file_content(contents):
     content_type, content_string = contents.split(',')
@@ -32,10 +53,13 @@ def calc_smooth_derivative(x, y, window_length=21, polyorder=2):
     return y_smooth, dy_dx
 
 def sync_vis_dict(data_json, vis_dict):
+    # Si no hay archivos, dict vacío
     if not data_json:
         return {}
+    # Si no hay vis_dict, todos visibles
     if not vis_dict:
         return {k: True for k in data_json.keys()}
+    # Mantén estados previos, añade nuevos como visibles
     return {k: vis_dict.get(k, True) for k in data_json.keys()}
 
 COLOR_PALETTE = [
@@ -46,6 +70,7 @@ COLOR_PALETTE = [
 layout = html.Div([
     html.Div([
         html.Div([
+            # Botón Refresh (ya lo tenías)
             html.Button(
                 html.I(className="fa fa-rotate-right"),
                 id="refresh-btn-tgcomp",
@@ -60,6 +85,25 @@ layout = html.Div([
                     "verticalAlign": "middle",
                     "position": "absolute",
                     "left": "20px",
+                    "top": "50%",
+                    "transform": "translateY(-50%)"
+                }
+            ),
+            # Botón Walkthrough (nuevo) al lado del refresh
+            html.Button(
+                html.I(className="fa-solid fa-book"),
+                id="walkthrough-btn",
+                title="Cargar ejemplos (walkthrough)",
+                n_clicks=0,
+                style={
+                    "fontSize": "24px",
+                    "background": "none",
+                    "border": "none",
+                    "color": "#333",
+                    "cursor": "pointer",
+                    "verticalAlign": "middle",
+                    "position": "absolute",
+                    "left": "60px",   # un poco a la derecha del refresh
                     "top": "50%",
                     "transform": "translateY(-50%)"
                 }
@@ -89,6 +133,8 @@ layout = html.Div([
         dcc.Store(id='multi-tg-data-store', data={}),
         dcc.Store(id='show-graph-cards', data=False),
         dcc.Store(id='tg-legend-visibility', data={}),
+        # Store para pasar los datos precargados del walkthrough al mismo flujo de carga
+        dcc.Store(id='walkthrough-data', data=None),
 
         dbc.Card(dbc.CardBody([
             html.Div([
@@ -134,22 +180,66 @@ layout = html.Div([
 # --- CALLBACKS ---
 
 @dash.callback(
+    Output('walkthrough-data', 'data'),
+    Input('walkthrough-btn', 'n_clicks'),
+    prevent_initial_call=True
+)
+def load_walkthrough(n_clicks):
+    """Lee los CSV definidos en WALKTHROUGH_FILES y devuelve el dict esperado por multi-tg-data-store."""
+    if not n_clicks:
+        raise PreventUpdate
+
+    loaded = {}
+    errors = []
+    for spec in WALKTHROUGH_FILES:
+        label = spec["label"]
+        path = spec["path"]
+        delim = spec.get("delimiter", ",")
+        try:
+            if not path.exists():
+                errors.append(f"Archivo no encontrado: {path}")
+                continue
+            df = pd.read_csv(path, delimiter=delim)
+            # Ajuste de columnas como en la carga normal
+            if df.shape[1] > 4:
+                df_selected = df.iloc[:, [4, 1]].copy()
+                df_selected.columns = ['Temperature', 'Mass']
+            else:
+                df_selected = df.iloc[:, [0, 1]].copy()
+                df_selected.columns = ['X_Value', 'Mass']
+            loaded[label] = df_selected.to_json(orient='split')
+        except Exception as e:
+            errors.append(f"Error en {label}: {e}")
+
+    # Puedes loguear 'errors' si quieres (o mostrarlos en UI con otro Output)
+    return loaded if loaded else {}
+
+@dash.callback(
     [Output('multi-tg-data-store', 'data'),
      Output('multi-tg-filenames-display', 'children'),
      Output('show-graph-cards', 'data')],
-    Input('upload-multi-tg', 'contents'),
+    [Input('upload-multi-tg', 'contents'),
+     Input('walkthrough-data', 'data')],
     [State('upload-multi-tg', 'filename'),
      State('multi-tg-data-store', 'data')]
 )
-def handle_multi_tg_uploads(list_of_contents, list_of_names, existing_data_json):
+def handle_multi_tg_uploads(list_of_contents, walkthrough_loaded, list_of_names, existing_data_json):
+    """
+    Maneja tanto la carga manual (Upload) como la carga automática (Walkthrough).
+    - Si se dispara por Upload: procesa base64 -> DataFrame -> JSON.
+    - Si se dispara por Walkthrough: 'walkthrough_loaded' ya trae {filename: df_json}.
+    En ambos casos, se fusiona con lo existente.
+    """
     current_data = existing_data_json.copy() if existing_data_json else {}
+    triggered = dash.callback_context.triggered[0]['prop_id'].split('.')[0] if dash.callback_context.triggered else None
 
-    if list_of_contents is not None:
+    if triggered == 'upload-multi-tg' and list_of_contents is not None:
         newly_added_files = []
         errors_encountered = []
 
         for c, n in zip(list_of_contents, list_of_names):
             if n in current_data:
+                # si ya existe, lo saltamos para no duplicar
                 continue
             try:
                 df = pd.read_csv(decode_csv_file_content(c), delimiter=',')
@@ -183,11 +273,26 @@ def handle_multi_tg_uploads(list_of_contents, list_of_names, existing_data_json)
 
         return current_data, feedback_elements, show_cards
 
+    elif triggered == 'walkthrough-data' and walkthrough_loaded:
+        # Fusiona los datos del walkthrough con lo existente (sobrescribe si mismos nombres)
+        current_data.update(walkthrough_loaded)
+        feedback_elements = [
+            html.P(f"Procesados (walkthrough): {', '.join(walkthrough_loaded.keys())}", className="text-success")
+        ]
+        loaded_files_list = [html.Li(f) for f in current_data.keys()]
+        feedback_elements.insert(0, html.P(f"Total archivos: {len(current_data)}"))
+        feedback_elements.append(html.Details([html.Summary("Archivos cargados:"), html.Ul(loaded_files_list)]))
+        return current_data, feedback_elements, True
+
+    # Nada nuevo; devolver estado actual
     if not current_data:
         return {}, html.P("No hay archivos cargados aún.", className="text-muted"), False
 
     loaded_files_list = [html.Li(f) for f in current_data.keys()]
-    return current_data, html.Div([html.P(f"Total archivos: {len(current_data)}"), html.Details([html.Summary("Archivos cargados:"), html.Ul(loaded_files_list)])]), bool(current_data)
+    return current_data, html.Div([
+        html.P(f"Total archivos: {len(current_data)}"),
+        html.Details([html.Summary("Archivos cargados:"), html.Ul(loaded_files_list)])
+    ]), bool(current_data)
 
 
 @dash.callback(
@@ -205,12 +310,20 @@ def show_graph_cards(show_cards):
                         dcc.Graph(
                             id='multi-tg-temp-graph',
                             style={'height': '350px', "width": "100%"},
-                            config={'editable': True, 'edits': {'titleText': False}}
+                            config={
+                                'editable': True,
+                                'edits': {'titleText': False}
+                            }
                         )
                     ]),
                     className="shadow p-3 mb-4 rounded",
-                    style={"backgroundColor": "rgba(255,255,255,0.85)", "minHeight": "420px",
-                           "display": "flex", "flexDirection": "column", "justifyContent": "center"}
+                    style={
+                        "backgroundColor": "rgba(255,255,255,0.85)",
+                        "minHeight": "420px",
+                        "display": "flex",
+                        "flexDirection": "column",
+                        "justifyContent": "center"
+                    }
                 ),
                 width=6
             ),
@@ -220,12 +333,20 @@ def show_graph_cards(show_cards):
                         dcc.Graph(
                             id='multi-tg-dtg-graph',
                             style={'height': '350px', "width": "100%"},
-                            config={'editable': True, 'edits': {'titleText': False}}
+                            config={
+                                'editable': True,
+                                'edits': {'titleText': False}
+                            }
                         )
                     ]),
                     className="shadow p-3 mb-4 rounded",
-                    style={"backgroundColor": "rgba(255,255,255,0.85)", "minHeight": "420px",
-                           "display": "flex", "flexDirection": "column", "justifyContent": "center"}
+                    style={
+                        "backgroundColor": "rgba(255,255,255,0.85)",
+                        "minHeight": "420px",
+                        "display": "flex",
+                        "flexDirection": "column",
+                        "justifyContent": "center"
+                    }
                 ),
                 width=6
             ),
@@ -237,12 +358,20 @@ def show_graph_cards(show_cards):
                         dcc.Graph(
                             id='multi-tg-comparison-graph',
                             style={'height': '400px', "width": "100%"},
-                            config={'editable': True, 'edits': {'titleText': False}}
+                            config={
+                                'editable': True,
+                                'edits': {'titleText': False}
+                            }
                         )
                     ]),
                     className="shadow p-3 mb-4 rounded",
-                    style={"backgroundColor": "rgba(255,255,255,0.85)", "minHeight": "470px",
-                           "display": "flex", "flexDirection": "column", "justifyContent": "center"}
+                    style={
+                        "backgroundColor": "rgba(255,255,255,0.85)",
+                        "minHeight": "470px",
+                        "display": "flex",
+                        "flexDirection": "column",
+                        "justifyContent": "center"
+                    }
                 ),
                 width=12
             )
@@ -259,8 +388,10 @@ def plot_temp_programs(data_json, vis_dict):
     fig = go.Figure()
     vis_dict = sync_vis_dict(data_json, vis_dict)
     if not data_json or not any(vis_dict.values()):
-        fig.update_layout(xaxis={'visible': False}, yaxis={'visible': False},
-                          plot_bgcolor='white', paper_bgcolor='white')
+        fig.update_layout(
+            xaxis={'visible': False}, yaxis={'visible': False},
+            plot_bgcolor='white', paper_bgcolor='white'
+        )
         return fig
     for i, (filename, df_json_single) in enumerate(data_json.items()):
         if not vis_dict.get(filename, True):
@@ -294,8 +425,10 @@ def plot_multi_tg_dtg(data_json, vis_dict):
     fig = go.Figure()
     vis_dict = sync_vis_dict(data_json, vis_dict)
     if not data_json or not any(vis_dict.values()):
-        fig.update_layout(xaxis={'visible': False}, yaxis={'visible': False},
-                          plot_bgcolor='white', paper_bgcolor='white')
+        fig.update_layout(
+            xaxis={'visible': False}, yaxis={'visible': False},
+            plot_bgcolor='white', paper_bgcolor='white'
+        )
         return fig
     last_temp_is_temperature = True
     for i, (filename, df_json_single) in enumerate(data_json.items()):
@@ -339,8 +472,10 @@ def plot_multi_tg_comparison(data_json, vis_dict):
     fig = go.Figure()
     vis_dict = sync_vis_dict(data_json, vis_dict)
     if not data_json or not any(vis_dict.values()):
-        fig.update_layout(xaxis={'visible': False}, yaxis={'visible': False},
-                          plot_bgcolor='white', paper_bgcolor='white')
+        fig.update_layout(
+            xaxis={'visible': False}, yaxis={'visible': False},
+            plot_bgcolor='white', paper_bgcolor='white'
+        )
         return fig
     last_temp_is_temperature = True
     for i, (filename, df_json_single) in enumerate(data_json.items()):
@@ -369,7 +504,7 @@ def plot_multi_tg_comparison(data_json, vis_dict):
         yaxis=dict(showgrid=True, gridcolor='#e0e0e0'),
         showlegend=False
     )
-    fig.update_yaxes(range=[100, 0])  # 100 arriba, 0 abajo
+    fig.update_yaxes(range=[100, 0])
     return fig
 
 # --- REFRESH BUTTON ---
@@ -423,21 +558,33 @@ def update_unified_legend(data_json, vis_dict):
 
 @dash.callback(
     Output('tg-legend-visibility', 'data'),
-    [Input('multi-tg-data-store', 'data'),
-     Input({'type': 'legend-eye', 'index': dash.ALL}, 'n_clicks')],
+    [
+        Input('multi-tg-data-store', 'data'),
+        Input({'type': 'legend-eye', 'index': dash.ALL}, 'n_clicks')
+    ],
     State('tg-legend-visibility', 'data'),
     prevent_initial_call=False
 )
 def update_visibility(data_json, n_clicks_list, vis_dict):
+    """
+    Actualiza la visibilidad por archivo según los clics en los iconos de la leyenda.
+    """
     ctx_ = dash.callback_context
+
     if not data_json:
         return {}
+
     current_vis = vis_dict.copy() if vis_dict else {}
+
     triggered_prop_id = ctx_.triggered[0]['prop_id'] if ctx_.triggered else ""
+
+    # Sincroniza con los archivos actuales (nuevos por defecto visibles)
     synced_vis = {filename: current_vis.get(filename, True) for filename in data_json.keys()}
 
+    # ¿Qué se pulsó?
     is_eye_click = False
     clicked_filename = None
+
     if triggered_prop_id.endswith('.n_clicks'):
         id_str = triggered_prop_id.split('.n_clicks')[0]
         try:
@@ -450,8 +597,8 @@ def update_visibility(data_json, n_clicks_list, vis_dict):
 
     if is_eye_click and clicked_filename in synced_vis:
         synced_vis[clicked_filename] = not synced_vis[clicked_filename]
+
     return synced_vis
-# ------------------------------------------------------------------
 
 
 
