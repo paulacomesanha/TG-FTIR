@@ -585,7 +585,7 @@ def update_charts(status, show_gs, relayout_data, manual_time, fixed_ftir_list):
         for i, f in enumerate(fixed_ftir_list):
             fig_ftir.add_trace(go.Scatter(x=f["x"], y=f["y"], mode='lines', name=f'Fijado {i+1}', line=dict(color=f["color"], width=2)))
     fig_ftir.update_xaxes(title="Wavenumber (cm⁻¹)", autorange='reversed', showgrid=True, gridcolor='#ccc', showline=True, linecolor='#999')
-    fig_ftir.update_yaxes(title="Transmitance (%)", showgrid=True, gridcolor='#ccc', showline=True, linecolor='#999')
+    fig_ftir.update_yaxes(title="Transmittance (%)", showgrid=True, gridcolor='#ccc', showline=True, linecolor='#999')
     fig_ftir.update_layout(plot_bgcolor='white', paper_bgcolor='white', showlegend=False, margin=dict(t=20, b=60))
 
     badge_text = f"Initial mass: {init_mass:.2f} mg"
