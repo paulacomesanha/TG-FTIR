@@ -1,602 +1,676 @@
-import dash
-from dash import dcc, html, Input, Output, State
-import dash_bootstrap_components as dbc
-import dash_mantine_components as dmc
-import pandas as pd
+# pages/tg_comparison.py
+from __future__ import annotations
+
 import base64
 import io
-import plotly.graph_objs as go
-import numpy as np
-from scipy.signal import savgol_filter
-import ast
-from dash.exceptions import PreventUpdate
 from pathlib import Path
+from typing import Dict, List, Tuple
 
-dash.register_page(__name__, path='/tg-comparison', name='Thermogravimetric Analysis', order=2)
+import dash
+import dash_bootstrap_components as dbc
+import dash_mantine_components as dmc
+import numpy as np
+import pandas as pd
+import plotly.graph_objs as go
+from dash import Input, Output, State, ctx, dcc, html
+from dash.exceptions import PreventUpdate
+from scipy.signal import savgol_filter
+
+dash.register_page(__name__, path="/tg-comparison", name="Thermogravimetric Analysis", order=2)
 
 # =========================
-#  Walkthrough: configura aquí tus CSV de ejemplo
+# Walkthrough: define aquí tus CSV de ejemplo
 # =========================
-# Ruta base del proyecto (carpeta donde está app.py)
-BASE_DIR = Path(__file__).resolve().parents[1]
-# Ajusta las rutas/ nombres y delimitadores a tus archivos reales
-WALKTHROUGH_FILES = [
+BASE_DIR = Path(__file__).resolve().parents[1]  # carpeta raíz del proyecto (donde está app.py)
+WALKTHROUGH_FILES: List[Dict] = [
     {
         "label": "TG_50CO_50P_R10.csv",
         "path": BASE_DIR / "assets" / "walkthrough" / "TG_50CO_50P_R10.csv",
-        "delimiter": ","
+        "delimiter": ",",
     },
     {
         "label": "TG_80CO-20ES_R10R5_W6.csv",
         "path": BASE_DIR / "assets" / "walkthrough" / "TG_80CO-20ES_R10R5_W6.csv",
-        "delimiter": ","
+        "delimiter": ",",
     },
 ]
 
-def decode_csv_file_content(contents):
-    content_type, content_string = contents.split(',')
-    decoded = base64.b64decode(content_string)
-    try:
-        return io.StringIO(decoded.decode('utf-8'))
-    except UnicodeDecodeError:
-        return io.StringIO(decoded.decode('ISO-8859-1'))
-
-def calc_smooth_derivative(x, y, window_length=21, polyorder=2):
-    if window_length >= len(y):
-        window_length = len(y) - 1 if len(y) % 2 == 0 else len(y)
-    if window_length < 3:
-        window_length = 3
-    if window_length % 2 == 0:
-        window_length += 1
-    y_smooth = savgol_filter(y, window_length, polyorder)
-    dy_dx = savgol_filter(y, window_length, polyorder, deriv=1, delta=np.mean(np.diff(x)))
-    return y_smooth, dy_dx
-
-def sync_vis_dict(data_json, vis_dict):
-    # Si no hay archivos, dict vacío
-    if not data_json:
-        return {}
-    # Si no hay vis_dict, todos visibles
-    if not vis_dict:
-        return {k: True for k in data_json.keys()}
-    # Mantén estados previos, añade nuevos como visibles
-    return {k: vis_dict.get(k, True) for k in data_json.keys()}
-
-COLOR_PALETTE = [
-    "#a3c9e2", "#f7b7a3", "#b5ead7", "#f9e79f", "#d7bde2",
-    "#f5cba7", "#aed6f1", "#fad7a0", "#d2b4de", "#f7cac9"
+PLOTLY_COLORS = [
+    "#636EFA", "#EF553B", "#00CC96", "#AB63FA", "#FFA15A",
+    "#19D3F3", "#FF6692", "#B6E880", "#FF97FF", "#FECB52",
 ]
 
-layout = html.Div([
-    html.Div([
-        html.Div([
-            # Botón Refresh (ya lo tenías)
-            html.Button(
-                html.I(className="fa fa-rotate-right"),
-                id="refresh-btn-tgcomp",
-                title="Reiniciar página",
-                n_clicks=0,
-                style={
-                    "fontSize": "28px",
-                    "background": "none",
-                    "border": "none",
-                    "color": "#333",
-                    "cursor": "pointer",
-                    "verticalAlign": "middle",
-                    "position": "absolute",
-                    "left": "20px",
-                    "top": "50%",
-                    "transform": "translateY(-50%)"
-                }
-            ),
-            # Botón Walkthrough (nuevo) al lado del refresh
-            html.Button(
-                html.I(className="fa-solid fa-book"),
-                id="walkthrough-btn",
-                title="Walkthrough",
-                n_clicks=0,
-                style={
-                    "fontSize": "24px",
-                    "background": "none",
-                    "border": "none",
-                    "color": "#333",
-                    "cursor": "pointer",
-                    "verticalAlign": "middle",
-                    "position": "absolute",
-                    "left": "60px",   # un poco a la derecha del refresh
-                    "top": "50%",
-                    "transform": "translateY(-50%)"
-                }
-            ),
-            html.H2(
-                "Thermogravimetric Analysis",
-                className="text-center mb-3",
-                style={
-                    "fontWeight": "bold",
-                    "color": "#333",
-                    "margin": "0 auto",
-                    "textAlign": "center",
-                    "width": "100%"
-                }
-            ),
-        ], style={
-            "position": "relative",
-            "display": "flex",
-            "alignItems": "center",
-            "justifyContent": "center",
-            "height": "60px"
-        }),
-    ], className="shadow-sm p-3 mb-4 bg-light",
-    style={"borderBottom": "3px solid #ddd", "background": "#f8f9fa", "borderRadius": "8px"}),
 
-    dbc.Container([
-        dcc.Store(id='multi-tg-data-store', data={}),
-        dcc.Store(id='show-graph-cards', data=False),
-        dcc.Store(id='tg-legend-visibility', data={}),
-        # Store para pasar los datos precargados del walkthrough al mismo flujo de carga
-        dcc.Store(id='walkthrough-data', data=None),
+# =========================
+# Utils
+# =========================
+def decode_csv_file_content(contents: str) -> io.StringIO:
+    """dcc.Upload.contents → CSV StringIO con tolerancia a utf-8 / ISO-8859-1."""
+    _, content_string = contents.split(",", 1)
+    decoded = base64.b64decode(content_string)
+    try:
+        return io.StringIO(decoded.decode("utf-8"))
+    except UnicodeDecodeError:
+        return io.StringIO(decoded.decode("ISO-8859-1"))
 
-        dbc.Card(dbc.CardBody([
-            html.Div([
-                dcc.Upload(
-                    id='upload-multi-tg',
-                    children=html.Div([
-                        html.I(className="fa fa-upload", style={"marginRight": "8px", "fontSize": "22px", "color": "#1976d2"}),
-                        html.Span('Arrastra o selecciona archivos TG CSV', style={"fontWeight": "bold", "color": "#1976d2"})
-                    ], className="text-center"),
-                    style={
-                        'width': '100%',
-                        'height': '70px',
-                        'lineHeight': '70px',
-                        'borderWidth': '2px',
-                        'borderStyle': 'dashed',
-                        'borderColor': '#1976d2',
-                        'borderRadius': '12px',
-                        'textAlign': 'center',
-                        'background': '#f4f8fb',
-                        'cursor': 'pointer',
-                        'marginBottom': '0px'
-                    },
-                    multiple=True
-                ),
-            ], style={"display": "flex", "flexDirection": "column", "gap": "8px"}),
-            html.Div(id='multi-tg-filenames-display', className="mt-3 text-muted"),
-            html.Div(id='tg-unified-legend', style={"marginTop": "18px", "display": "flex", "flexWrap": "wrap", "gap": "12px", "justifyContent": "center"}),
-        ]),
-        className="mb-4 shadow-sm",
-        style={
-            "backgroundColor": "rgba(255,255,255,0.92)",
-            "borderRadius": "18px",
-            "boxShadow": "0 4px 24px rgba(25, 118, 210, 0.07)"
-        }
+
+def _read_table_like(buf: io.StringIO | bytes | bytearray, filename: str) -> pd.DataFrame:
+    """
+    Lee un archivo tipo tabla:
+      - Si el nombre termina en .xls/.xlsx -> intenta leer Excel.
+      - Si no -> CSV con autodetección de separador (',' o ';').
+    """
+    name = (filename or "").lower()
+    if name.endswith((".xls", ".xlsx")):
+        # Excel: convertir a BytesIO si no lo es
+        if isinstance(buf, io.StringIO):
+            data = buf.getvalue().encode("utf-8")
+            bio: io.BytesIO = io.BytesIO(data)
+        elif isinstance(buf, (bytes, bytearray)):
+            bio = io.BytesIO(buf)  # type: ignore[arg-type]
+        else:
+            # ya es un BytesIO u otra cosa parecida
+            bio = io.BytesIO(buf.read())  # type: ignore[attr-defined]
+        return pd.read_excel(bio)
+
+    # CSV (usa engine='python' para detectar sep automáticamente)
+    if isinstance(buf, io.StringIO):
+        return pd.read_csv(buf, sep=None, engine="python")
+    # bytes -> decodificar como utf-8/latin
+    try:
+        return pd.read_csv(io.StringIO(buf.decode("utf-8")), sep=None, engine="python")  # type: ignore[arg-type]
+    except Exception:
+        return pd.read_csv(io.StringIO(buf.decode("ISO-8859-1")), sep=None, engine="python")  # type: ignore[arg-type]
+
+
+def _select_tg_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Selecciona columnas TG (X y Mass) de forma robusta:
+      - Prioriza nombres que contengan 'temp', 'temperature', 'x_value', etc. para X.
+      - Para masa, busca 'mass', 'weight', 'tg', 'm%'.
+      - Si no encuentra por nombre, cae a las dos primeras columnas.
+    Salida: DataFrame con columnas ['Temperature'|'X_Value', 'Mass'].
+    """
+    cols_lower = {str(c).lower(): c for c in df.columns}
+    temp_keys = [k for k in cols_lower if any(s in k for s in ["temp", "temperature", "x_value", "x value", "time"])]
+    mass_keys = [k for k in cols_lower if any(s in k for s in ["mass", "weight", "tg", "m(", "m%", "m %"])]
+
+    # Si encontramos por nombre, usamos esos
+    if mass_keys:
+        mcol = cols_lower[mass_keys[0]]
+    else:
+        # fallback: segunda columna
+        mcol = df.columns[1] if df.shape[1] >= 2 else df.columns[-1]
+
+    if temp_keys:
+        tcol = cols_lower[temp_keys[0]]
+        out = df[[tcol, mcol]].copy()
+        # etiqueta de X según si parece temperatura o tiempo
+        out.columns = ["Temperature" if "temp" in str(tcol).lower() else "X_Value", "Mass"]
+        return out
+
+    # Fallback: primeras dos columnas
+    if df.shape[1] >= 2:
+        out = df.iloc[:, [0, 1]].copy()
+        out.columns = ["X_Value", "Mass"]
+        return out
+
+    raise ValueError("No se pudieron identificar columnas de X/Temperatura y Masa en el archivo.")
+
+
+def calc_smooth_derivative(
+    x: np.ndarray, y: np.ndarray, window_length: int = 21, polyorder: int = 2
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Suaviza y deriva con Savitzky–Golay asegurando ventana válida e impar."""
+    n = len(y)
+    window_length = max(3, min(window_length, n - 1))
+    if window_length % 2 == 0:
+        window_length -= 1
+    polyorder = min(polyorder, window_length - 1)
+    y_smooth = savgol_filter(y, window_length, polyorder)
+    dx = float(np.mean(np.diff(x))) if n > 1 else 1.0
+    dy_dx = savgol_filter(y, window_length, polyorder, deriv=1, delta=dx)
+    return y_smooth, dy_dx
+
+
+def sync_vis_dict(data_json: Dict[str, str] | None, vis_dict: Dict[str, bool] | None) -> Dict[str, bool]:
+    """Sincroniza el diccionario de visibilidad con los nombres de ficheros presentes."""
+    if not data_json:
+        return {}
+    if not vis_dict:
+        return {k: True for k in data_json.keys()}
+    return {k: vis_dict.get(k, True) for k in data_json.keys()}
+
+# =========================
+# Layout
+# =========================
+header_bar = html.Div(
+    [
+        # Refresh
+        html.Button(
+            html.I(className="fa fa-rotate-right"),
+            id="refresh-btn-tgcomp",
+            title="Reiniciar página",
+            n_clicks=0,
+            style={
+                "fontSize": "28px",
+                "background": "none",
+                "border": "none",
+                "color": "#333",
+                "cursor": "pointer",
+                "verticalAlign": "middle",
+                "position": "absolute",
+                "left": "20px",
+                "top": "50%",
+                "transform": "translateY(-50%)",
+            },
         ),
-
-        dmc.Divider(variant="solid", m="xl", color="#b0b0b0", size="md"),
-
-        html.Div(id="graph-cards-container")
-    ], fluid=True, className="mt-4")
-])
-
-# --- CALLBACKS ---
-
-@dash.callback(
-    Output('walkthrough-data', 'data'),
-    Input('walkthrough-btn', 'n_clicks'),
-    prevent_initial_call=True
+        # Walkthrough
+        html.Button(
+            html.I(className="fa-solid fa-book"),
+            id="walkthrough-btn",
+            title="Walkthrough",
+            n_clicks=0,
+            style={
+                "fontSize": "24px",
+                "background": "none",
+                "border": "none",
+                "color": "#333",
+                "cursor": "pointer",
+                "verticalAlign": "middle",
+                "position": "absolute",
+                "left": "60px",
+                "top": "50%",
+                "transform": "translateY(-50%)",
+            },
+        ),
+        html.H2(
+            "Thermogravimetric Analysis",
+            className="text-center mb-3",
+            style={
+                "fontWeight": "bold",
+                "color": "#333",
+                "margin": "0 auto",
+                "textAlign": "center",
+                "width": "100%",
+            },
+        ),
+    ],
+    style={"position": "relative", "display": "flex", "alignItems": "center", "justifyContent": "center", "height": "60px"},
 )
-def load_walkthrough(n_clicks):
-    """Lee los CSV definidos en WALKTHROUGH_FILES y devuelve el dict esperado por multi-tg-data-store."""
+
+layout = html.Div(
+    [
+        html.Div(
+            [header_bar],
+            className="shadow-sm p-3 mb-4 bg-light",
+            style={"borderBottom": "3px solid #ddd", "background": "#f8f9fa", "borderRadius": "8px"},
+        ),
+        dbc.Container(
+            [
+                dcc.Store(id="multi-tg-data-store", data={}),
+                dcc.Store(id="show-graph-cards", data=False),
+                dcc.Store(id="tg-legend-visibility", data={}),
+                dcc.Store(id="walkthrough-data", data=None),  # datos precargados
+
+                dbc.Card(
+                    dbc.CardBody(
+                        [
+                            html.Div(
+                                [
+                                    dcc.Upload(
+                                        id="upload-multi-tg",
+                                        children=html.Div(
+                                            [
+                                                html.I(
+                                                    className="fa fa-upload",
+                                                    style={"marginRight": "8px", "fontSize": "22px", "color": "#1976d2"},
+                                                ),
+                                                html.Span(
+                                                    "Arrastra o selecciona archivos TG CSV",
+                                                    style={"fontWeight": "bold", "color": "#1976d2"},
+                                                ),
+                                            ],
+                                            className="text-center",
+                                        ),
+                                        style={
+                                            "width": "100%",
+                                            "height": "70px",
+                                            "lineHeight": "70px",
+                                            "borderWidth": "2px",
+                                            "borderStyle": "dashed",
+                                            "borderColor": "#1976d2",
+                                            "borderRadius": "12px",
+                                            "textAlign": "center",
+                                            "background": "#f4f8fb",
+                                            "cursor": "pointer",
+                                            "marginBottom": "0px",
+                                        },
+                                        multiple=True,
+                                    ),
+                                ],
+                                style={"display": "flex", "flexDirection": "column", "gap": "8px"},
+                            ),
+                            html.Div(id="multi-tg-filenames-display", className="mt-3 text-muted"),
+                            html.Div(
+                                id="tg-unified-legend",
+                                style={"marginTop": "18px", "display": "flex", "flexWrap": "wrap", "gap": "12px", "justifyContent": "center"},
+                            ),
+                        ]
+                    ),
+                    className="mb-4 shadow-sm",
+                    style={"backgroundColor": "rgba(255,255,255,0.92)", "borderRadius": "18px", "boxShadow": "0 4px 24px rgba(25, 118, 210, 0.07)"},
+                ),
+
+                dmc.Divider(variant="solid", m="xl", color="#b0b0b0", size="md"),
+                html.Div(id="graph-cards-container"),
+            ],
+            fluid=True,
+            className="mt-4",
+        ),
+    ]
+)
+
+# =========================
+# Callbacks
+# =========================
+@dash.callback(
+    Output("walkthrough-data", "data"),
+    Input("walkthrough-btn", "n_clicks"),
+    prevent_initial_call=True,
+)
+def load_walkthrough(n_clicks: int | None):
+    """Lee los CSV definidos en WALKTHROUGH_FILES y devuelve el dict {filename: json}."""
     if not n_clicks:
         raise PreventUpdate
 
-    loaded = {}
-    errors = []
+    loaded: Dict[str, str] = {}
     for spec in WALKTHROUGH_FILES:
-        label = spec["label"]
-        path = spec["path"]
-        delim = spec.get("delimiter", ",")
-        try:
-            if not path.exists():
-                errors.append(f"Archivo no encontrado: {path}")
-                continue
-            df = pd.read_csv(path, delimiter=delim)
-            # Ajuste de columnas como en la carga normal
-            if df.shape[1] > 4:
-                df_selected = df.iloc[:, [4, 1]].copy()
-                df_selected.columns = ['Temperature', 'Mass']
-            else:
-                df_selected = df.iloc[:, [0, 1]].copy()
-                df_selected.columns = ['X_Value', 'Mass']
-            loaded[label] = df_selected.to_json(orient='split')
-        except Exception as e:
-            errors.append(f"Error en {label}: {e}")
+        path: Path = spec["path"]
+        if not path.exists():
+            # no rompemos flujo si falta alguno
+            continue
+        # Lee con heurística (aunque sean CSV)
+        raw = path.read_bytes()
+        df = _read_table_like(raw, path.name)
 
-    # Puedes loguear 'errors' si quieres (o mostrarlos en UI con otro Output)
-    return loaded if loaded else {}
+        # Selecciona columnas robustamente
+        try:
+            df_selected = _select_tg_columns(df)
+        except Exception:
+            # Fallback mínimo: primeras dos columnas
+            df_selected = df.iloc[:, [0, 1]].copy()
+            df_selected.columns = ["X_Value", "Mass"]
+
+        loaded[spec["label"]] = df_selected.to_json(orient="split")
+    return loaded
+
 
 @dash.callback(
-    [Output('multi-tg-data-store', 'data'),
-     Output('multi-tg-filenames-display', 'children'),
-     Output('show-graph-cards', 'data')],
-    [Input('upload-multi-tg', 'contents'),
-     Input('walkthrough-data', 'data')],
-    [State('upload-multi-tg', 'filename'),
-     State('multi-tg-data-store', 'data')]
+    Output("multi-tg-data-store", "data"),
+    Output("multi-tg-filenames-display", "children"),
+    Output("show-graph-cards", "data"),
+    Input("upload-multi-tg", "contents"),
+    Input("walkthrough-data", "data"),
+    State("upload-multi-tg", "filename"),
+    State("multi-tg-data-store", "data"),
 )
 def handle_multi_tg_uploads(list_of_contents, walkthrough_loaded, list_of_names, existing_data_json):
     """
-    Maneja tanto la carga manual (Upload) como la carga automática (Walkthrough).
-    - Si se dispara por Upload: procesa base64 -> DataFrame -> JSON.
-    - Si se dispara por Walkthrough: 'walkthrough_loaded' ya trae {filename: df_json}.
-    En ambos casos, se fusiona con lo existente.
+    Maneja carga manual (Upload) y automática (Walkthrough).
+    Funde los resultados en el store de curvas disponibles.
     """
     current_data = existing_data_json.copy() if existing_data_json else {}
-    triggered = dash.callback_context.triggered[0]['prop_id'].split('.')[0] if dash.callback_context.triggered else None
+    trigger = ctx.triggered_id
 
-    if triggered == 'upload-multi-tg' and list_of_contents is not None:
-        newly_added_files = []
-        errors_encountered = []
-
+    # --- Carga manual ---------------------------------------------------------
+    if trigger == "upload-multi-tg" and list_of_contents:
+        newly_added, errors = [], []
         for c, n in zip(list_of_contents, list_of_names):
             if n in current_data:
-                # si ya existe, lo saltamos para no duplicar
                 continue
             try:
-                df = pd.read_csv(decode_csv_file_content(c), delimiter=',')
-                if df.shape[1] > 4:
-                    df_selected = df.iloc[:, [4, 1]].copy()
-                    df_selected.columns = ['Temperature', 'Mass']
-                    current_data[n] = df_selected.to_json(orient='split')
-                    newly_added_files.append(n)
-                else:
-                    df_selected = df.iloc[:, [0, 1]].copy()
-                    df_selected.columns = ['X_Value', 'Mass']
-                    current_data[n] = df_selected.to_json(orient='split')
-                    newly_added_files.append(n + " (fallback)")
-            except Exception as e:
-                errors_encountered.append(f"Error en {n}: {str(e)}")
+                file_buf = decode_csv_file_content(c)
+                df = _read_table_like(file_buf, n)
+                df_selected = _select_tg_columns(df)
+                current_data[n] = df_selected.to_json(orient="split")
+                newly_added.append(n)
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"Error en {n}: {e}")
 
-        feedback_elements = []
-        if newly_added_files:
-            feedback_elements.append(html.P(f"Procesados: {', '.join(newly_added_files)}", className="text-success"))
-        if errors_encountered:
-            error_lis = [html.Li(err) for err in errors_encountered]
-            feedback_elements.append(html.Details([html.Summary("Errores:"), html.Ul(error_lis)], className="text-danger"))
+        feedback = []
+        if newly_added:
+            feedback.append(html.P(f"Procesados: {', '.join(newly_added)}", className="text-success"))
+        if errors:
+            feedback.append(html.Details([html.Summary("Errores:"), html.Ul([html.Li(x) for x in errors])], className="text-danger"))
 
-        show_cards = bool(current_data)
-        if not current_data:
-            feedback_elements.append(html.P("No hay archivos cargados.", className="text-muted"))
-        else:
+        if current_data:
             loaded_files_list = [html.Li(f) for f in current_data.keys()]
-            feedback_elements.insert(0, html.P(f"Total archivos: {len(current_data)}"))
-            feedback_elements.append(html.Details([html.Summary("Archivos cargados:"), html.Ul(loaded_files_list)]))
+            feedback.insert(0, html.P(f"Total archivos: {len(current_data)}"))
+            feedback.append(html.Details([html.Summary("Archivos cargados:"), html.Ul(loaded_files_list)]))
+            return current_data, feedback, True
 
-        return current_data, feedback_elements, show_cards
+        feedback.append(html.P("No hay archivos cargados.", className="text-muted"))
+        return {}, feedback, False
 
-    elif triggered == 'walkthrough-data' and walkthrough_loaded:
-        # Fusiona los datos del walkthrough con lo existente (sobrescribe si mismos nombres)
+    # --- Walkthrough ----------------------------------------------------------
+    if trigger == "walkthrough-data" and walkthrough_loaded:
         current_data.update(walkthrough_loaded)
-        feedback_elements = [
-            html.P(f"Procesados (walkthrough): {', '.join(walkthrough_loaded.keys())}", className="text-success")
-        ]
         loaded_files_list = [html.Li(f) for f in current_data.keys()]
-        feedback_elements.insert(0, html.P(f"Total archivos: {len(current_data)}"))
-        feedback_elements.append(html.Details([html.Summary("Archivos cargados:"), html.Ul(loaded_files_list)]))
-        return current_data, feedback_elements, True
+        feedback = [
+            html.P(f"Total archivos: {len(current_data)}"),
+            html.P(f"Procesados (walkthrough): {', '.join(walkthrough_loaded.keys())}", className="text-success"),
+            html.Details([html.Summary("Archivos cargados:"), html.Ul(loaded_files_list)]),
+        ]
+        return current_data, feedback, True
 
-    # Nada nuevo; devolver estado actual
+    # Estado sin cambios
     if not current_data:
         return {}, html.P("No hay archivos cargados aún.", className="text-muted"), False
-
     loaded_files_list = [html.Li(f) for f in current_data.keys()]
-    return current_data, html.Div([
-        html.P(f"Total archivos: {len(current_data)}"),
-        html.Details([html.Summary("Archivos cargados:"), html.Ul(loaded_files_list)])
-    ]), bool(current_data)
+    return current_data, html.Div([html.P(f"Total archivos: {len(current_data)}"), html.Details([html.Summary("Archivos cargados:"), html.Ul(loaded_files_list)])]), True
 
 
 @dash.callback(
     Output("graph-cards-container", "children"),
-    Input('show-graph-cards', 'data')
+    Input("show-graph-cards", "data"),
 )
-def show_graph_cards(show_cards):
+def show_graph_cards(show_cards: bool):
+    """Muestra las tarjetas de gráficos cuando hay datos cargados."""
     if not show_cards:
         return ""
-    return html.Div([
-        dbc.Row([
-            dbc.Col(
-                dbc.Card(
-                    dbc.CardBody([
-                        dcc.Graph(
-                            id='multi-tg-temp-graph',
-                            style={'height': '350px', "width": "100%"},
-                            config={
-                                'editable': True,
-                                'edits': {'titleText': False}
-                            }
-                        )
-                    ]),
-                    className="shadow p-3 mb-4 rounded",
-                    style={
-                        "backgroundColor": "rgba(255,255,255,0.85)",
-                        "minHeight": "420px",
-                        "display": "flex",
-                        "flexDirection": "column",
-                        "justifyContent": "center"
-                    }
-                ),
-                width=6
+    return html.Div(
+        [
+            dbc.Row(
+                [
+                    dbc.Col(
+                        dbc.Card(
+                            dbc.CardBody(
+                                [
+                                    dcc.Graph(
+                                        id="multi-tg-temp-graph",
+                                        style={"height": "350px", "width": "100%"},
+                                        config={"editable": True, "edits": {"titleText": False}},
+                                    )
+                                ]
+                            ),
+                            className="shadow p-3 mb-4 rounded",
+                            style={"backgroundColor": "rgba(255,255,255,0.85)", "minHeight": "420px", "display": "flex", "flexDirection": "column", "justifyContent": "center"},
+                        ),
+                        width=6,
+                    ),
+                    dbc.Col(
+                        dbc.Card(
+                            dbc.CardBody(
+                                [
+                                    dcc.Graph(
+                                        id="multi-tg-dtg-graph",
+                                        style={"height": "350px", "width": "100%"},
+                                        config={"editable": True, "edits": {"titleText": False}},
+                                    )
+                                ]
+                            ),
+                            className="shadow p-3 mb-4 rounded",
+                            style={"backgroundColor": "rgba(255,255,255,0.85)", "minHeight": "420px", "display": "flex", "flexDirection": "column", "justifyContent": "center"},
+                        ),
+                        width=6,
+                    ),
+                ],
+                className="mb-4",
             ),
-            dbc.Col(
-                dbc.Card(
-                    dbc.CardBody([
-                        dcc.Graph(
-                            id='multi-tg-dtg-graph',
-                            style={'height': '350px', "width": "100%"},
-                            config={
-                                'editable': True,
-                                'edits': {'titleText': False}
-                            }
-                        )
-                    ]),
-                    className="shadow p-3 mb-4 rounded",
-                    style={
-                        "backgroundColor": "rgba(255,255,255,0.85)",
-                        "minHeight": "420px",
-                        "display": "flex",
-                        "flexDirection": "column",
-                        "justifyContent": "center"
-                    }
-                ),
-                width=6
+            dbc.Row(
+                [
+                    dbc.Col(
+                        dbc.Card(
+                            dbc.CardBody(
+                                [
+                                    dcc.Graph(
+                                        id="multi-tg-comparison-graph",
+                                        style={"height": "400px", "width": "100%"},
+                                        config={"editable": True, "edits": {"titleText": False}},
+                                    )
+                                ]
+                            ),
+                            className="shadow p-3 mb-4 rounded",
+                            style={"backgroundColor": "rgba(255,255,255,0.85)", "minHeight": "470px", "display": "flex", "flexDirection": "column", "justifyContent": "center"},
+                        ),
+                        width=12,
+                    )
+                ]
             ),
-        ], className="mb-4"),
-        dbc.Row([
-            dbc.Col(
-                dbc.Card(
-                    dbc.CardBody([
-                        dcc.Graph(
-                            id='multi-tg-comparison-graph',
-                            style={'height': '400px', "width": "100%"},
-                            config={
-                                'editable': True,
-                                'edits': {'titleText': False}
-                            }
-                        )
-                    ]),
-                    className="shadow p-3 mb-4 rounded",
-                    style={
-                        "backgroundColor": "rgba(255,255,255,0.85)",
-                        "minHeight": "470px",
-                        "display": "flex",
-                        "flexDirection": "column",
-                        "justifyContent": "center"
-                    }
-                ),
-                width=12
-            )
-        ])
-    ])
+        ]
+    )
 
-# --- GRAFICO 1: Programas de temperatura ---
+
+# --------- Gráfico 1: Programas de temperatura
 @dash.callback(
-    Output('multi-tg-temp-graph', 'figure'),
-    [Input('multi-tg-data-store', 'data'),
-     Input('tg-legend-visibility', 'data')]
+    Output("multi-tg-temp-graph", "figure"),
+    Input("multi-tg-data-store", "data"),
+    Input("tg-legend-visibility", "data"),
 )
-def plot_temp_programs(data_json, vis_dict):
+def plot_temp_programs(data_json: Dict[str, str] | None, vis_dict: Dict[str, bool] | None):
     fig = go.Figure()
     vis_dict = sync_vis_dict(data_json, vis_dict)
     if not data_json or not any(vis_dict.values()):
-        fig.update_layout(
-            xaxis={'visible': False}, yaxis={'visible': False},
-            plot_bgcolor='white', paper_bgcolor='white'
-        )
+        fig.update_layout(xaxis={"visible": False}, yaxis={"visible": False}, plot_bgcolor="white", paper_bgcolor="white")
         return fig
+
     for i, (filename, df_json_single) in enumerate(data_json.items()):
         if not vis_dict.get(filename, True):
             continue
-        df = pd.read_json(io.StringIO(df_json_single), orient='split')
-        temp_col = 'Temperature' if 'Temperature' in df.columns else 'X_Value'
+        df = pd.read_json(io.StringIO(df_json_single), orient="split")
+        # Prioriza 'Temperature' si existe; si no, X_Value
+        temp_col = "Temperature" if "Temperature" in df.columns else "X_Value"
         x_data = df[temp_col].astype(float)
-        fig.add_trace(go.Scatter(
-            x=np.arange(len(x_data)), y=x_data, mode='lines',
-            name=filename.rsplit('.', 1)[0],
-            line=dict(color=COLOR_PALETTE[i % len(COLOR_PALETTE)], width=2, dash="solid")
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=np.arange(len(x_data)),  # se representa como índice (no hay tiempo real)
+                y=x_data,
+                mode="lines",
+                name=filename.rsplit(".", 1)[0],
+                line=dict(width=2, dash="solid"),
+            )
+        )
+
     fig.update_layout(
-        xaxis_title="Time (s)",
+        xaxis_title="Index",
         yaxis_title="Temperature (°C)",
-        margin=dict(b=90),
-        plot_bgcolor='white', paper_bgcolor='white',
-        xaxis=dict(showgrid=True, gridcolor='#e0e0e0'),
-        yaxis=dict(showgrid=True, gridcolor='#e0e0e0'),
-        showlegend=False
+        margin=dict(l=60, r=20, t=10, b=70),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        xaxis=dict(showgrid=True, gridcolor="#ccc", showline=True, linecolor="#006400", tickfont=dict(color="#006400")),
+        yaxis=dict(showgrid=True, gridcolor="#ccc", showline=True, linecolor="#006400", tickfont=dict(color="#006400")),
+        showlegend=False,
+        font_family="Segoe UI, system-ui"
     )
     return fig
 
-# --- GRAFICO 2: Derivada normalizada ---
+
+# --------- Gráfico 2: Derivada normalizada
 @dash.callback(
-    Output('multi-tg-dtg-graph', 'figure'),
-    [Input('multi-tg-data-store', 'data'),
-     Input('tg-legend-visibility', 'data')]
+    Output("multi-tg-dtg-graph", "figure"),
+    Input("multi-tg-data-store", "data"),
+    Input("tg-legend-visibility", "data"),
 )
-def plot_multi_tg_dtg(data_json, vis_dict):
+def plot_multi_tg_dtg(data_json: Dict[str, str] | None, vis_dict: Dict[str, bool] | None):
     fig = go.Figure()
     vis_dict = sync_vis_dict(data_json, vis_dict)
     if not data_json or not any(vis_dict.values()):
-        fig.update_layout(
-            xaxis={'visible': False}, yaxis={'visible': False},
-            plot_bgcolor='white', paper_bgcolor='white'
-        )
+        fig.update_layout(xaxis={"visible": False}, yaxis={"visible": False}, plot_bgcolor="white", paper_bgcolor="white")
         return fig
-    last_temp_is_temperature = True
+
+    last_is_temp = True
     for i, (filename, df_json_single) in enumerate(data_json.items()):
         if not vis_dict.get(filename, True):
             continue
-        df = pd.read_json(io.StringIO(df_json_single), orient='split')
-        temp_col = 'Temperature' if 'Temperature' in df.columns else 'X_Value'
-        last_temp_is_temperature = (temp_col == 'Temperature')
-        mass_col = 'Mass'
-        x_data = df[temp_col].astype(float)
-        y_data = df[mass_col].astype(float)
-        init_mass = y_data.iloc[0]
-        fin_mass = y_data.iloc[-1]
-        norm_mass = 100 * (y_data - fin_mass) / (init_mass - fin_mass) if (init_mass - fin_mass) != 0 else np.zeros_like(y_data)
-        _, deriv = calc_smooth_derivative(x_data.values, norm_mass.values)
-        deriv_norm = 100 * (deriv - np.min(deriv)) / (np.max(deriv) - np.min(deriv)) if (np.max(deriv) - np.min(deriv)) != 0 else np.zeros_like(deriv)
-        fig.add_trace(go.Scatter(
-            x=x_data, y=deriv_norm, mode='lines',
-            name=filename.rsplit('.', 1)[0],
-            line=dict(color=COLOR_PALETTE[i % len(COLOR_PALETTE)], width=2, dash="solid")
-        ))
+        df = pd.read_json(io.StringIO(df_json_single), orient="split")
+        temp_col = "Temperature" if "Temperature" in df.columns else "X_Value"
+        last_is_temp = (temp_col == "Temperature")
+        x_data = df[temp_col].astype(float).values
+        y_data = df["Mass"].astype(float).values
+
+        # Normalización 0–100 usando primer y último punto
+        init_mass, fin_mass = float(y_data[0]), float(y_data[-1])
+        denom = (init_mass - fin_mass)
+        norm_mass = 100.0 * (y_data - fin_mass) / denom if denom != 0 else np.zeros_like(y_data)
+
+        _, deriv = calc_smooth_derivative(x_data, norm_mass)
+        dmin, dmax = float(np.min(deriv)), float(np.max(deriv))
+        deriv_norm = 100.0 * (deriv - dmin) / (dmax - dmin) if (dmax - dmin) != 0 else np.zeros_like(deriv)
+
+        fig.add_trace(
+            go.Scatter(
+                x=x_data,
+                y=deriv_norm,
+                mode="lines",
+                name=filename.rsplit(".", 1)[0],
+                line=dict(width=2, dash="solid"),
+            )
+        )
+
     fig.update_layout(
-        xaxis_title="Temperature (°C)" if last_temp_is_temperature else "X-Value (Temp or Time)",
+        xaxis_title="Temperature (°C)" if last_is_temp else "X-Value (Temp or Time)",
         yaxis_title="Normalized DTG (%)",
-        margin=dict(b=90),
-        plot_bgcolor='white', paper_bgcolor='white',
-        xaxis=dict(showgrid=True, gridcolor='#e0e0e0'),
-        yaxis=dict(showgrid=True, gridcolor='#e0e0e0'),
-        showlegend=False
+        margin=dict(l=60, r=20, t=10, b=70),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        xaxis=dict(showgrid=True, gridcolor="#e0e0e0"),
+        yaxis=dict(showgrid=True, gridcolor="#e0e0e0"),
+        showlegend=False,
+        font_family="Segoe UI, system-ui"
     )
     fig.update_yaxes(range=[0, 100])
     return fig
 
-# --- GRAFICO 3: TG normalizada ---
+
+# --------- Gráfico 3: TG normalizada
 @dash.callback(
-    Output('multi-tg-comparison-graph', 'figure'),
-    [Input('multi-tg-data-store', 'data'),
-     Input('tg-legend-visibility', 'data')]
+    Output("multi-tg-comparison-graph", "figure"),
+    Input("multi-tg-data-store", "data"),
+    Input("tg-legend-visibility", "data"),
 )
-def plot_multi_tg_comparison(data_json, vis_dict):
+def plot_multi_tg_comparison(data_json: Dict[str, str] | None, vis_dict: Dict[str, bool] | None):
     fig = go.Figure()
     vis_dict = sync_vis_dict(data_json, vis_dict)
     if not data_json or not any(vis_dict.values()):
-        fig.update_layout(
-            xaxis={'visible': False}, yaxis={'visible': False},
-            plot_bgcolor='white', paper_bgcolor='white'
-        )
+        fig.update_layout(xaxis={"visible": False}, yaxis={"visible": False}, plot_bgcolor="white", paper_bgcolor="white")
         return fig
-    last_temp_is_temperature = True
+
+    last_is_temp = True
     for i, (filename, df_json_single) in enumerate(data_json.items()):
         if not vis_dict.get(filename, True):
             continue
-        df = pd.read_json(io.StringIO(df_json_single), orient='split')
-        temp_col = 'Temperature' if 'Temperature' in df.columns else 'X_Value'
-        last_temp_is_temperature = (temp_col == 'Temperature')
-        mass_col = 'Mass'
-        x_data = df[temp_col].astype(float)
-        y_data = df[mass_col].astype(float)
-        init_mass = y_data.iloc[0]
-        fin_mass = y_data.iloc[-1]
-        norm_mass = 100 * (y_data - fin_mass) / (init_mass - fin_mass) if (init_mass - fin_mass) != 0 else np.zeros_like(y_data)
-        fig.add_trace(go.Scatter(
-            x=x_data, y=norm_mass, mode='lines',
-            name=filename.rsplit('.', 1)[0],
-            line=dict(color=COLOR_PALETTE[i % len(COLOR_PALETTE)], width=2, dash="solid")
-        ))
+        df = pd.read_json(io.StringIO(df_json_single), orient="split")
+        temp_col = "Temperature" if "Temperature" in df.columns else "X_Value"
+        last_is_temp = (temp_col == "Temperature")
+        x_data = df[temp_col].astype(float).values
+        y_data = df["Mass"].astype(float).values
+
+        # Normalización 0–100 usando primer y último punto
+        init_mass, fin_mass = float(y_data[0]), float(y_data[-1])
+        denom = (init_mass - fin_mass)
+        norm_mass = 100.0 * (y_data - fin_mass) / denom if denom != 0 else np.zeros_like(y_data)
+
+        fig.add_trace(
+            go.Scatter(
+                x=x_data,
+                y=norm_mass,
+                mode="lines",
+                name=filename.rsplit(".", 1)[0],
+                line=dict(width=2, dash="solid"),
+            )
+        )
+
     fig.update_layout(
-        xaxis_title="Temperature (°C)" if last_temp_is_temperature else "X-Value (Temp or Time)",
+        xaxis_title="Temperature (°C)" if last_is_temp else "X-Value (Temp or Time)",
         yaxis_title="Weight loss (%)",
-        margin=dict(b=90),
-        plot_bgcolor='white', paper_bgcolor='white',
-        xaxis=dict(showgrid=True, gridcolor='#e0e0e0'),
-        yaxis=dict(showgrid=True, gridcolor='#e0e0e0'),
-        showlegend=False
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        xaxis=dict(showgrid=True, gridcolor="#e0e0e0"),
+        yaxis=dict(showgrid=True, gridcolor="#e0e0e0"),
+        showlegend=False,
+        margin=dict(l=60, r=20, t=10, b=70),
+        font_family="Segoe UI, system-ui"
     )
     fig.update_yaxes(range=[100, 0])
     return fig
 
-# --- REFRESH BUTTON ---
-app = dash.get_app()
-app.clientside_callback(
-    """
-    function(n_clicks) {
-        if (n_clicks > 0) {
-            window.location.reload();
-        }
-        return null;
-    }
-    """,
-    Output('refresh-btn-tgcomp', 'n_clicks'),
-    Input('refresh-btn-tgcomp', 'n_clicks')
-)
+
+# --- Refresh (client-side) --- (seguro aunque aún no exista el app)
+try:
+    _app = dash.get_app()
+    if _app is not None:
+        _app.clientside_callback(
+            """
+            function(n_clicks){ if (n_clicks > 0) { window.location.reload(); } return null; }
+            """,
+            Output("refresh-btn-tgcomp", "n_clicks"),
+            Input("refresh-btn-tgcomp", "n_clicks"),
+        )
+except Exception:
+    pass
+
 
 @dash.callback(
-    Output('tg-unified-legend', 'children'),
-    [Input('multi-tg-data-store', 'data'),
-     Input('tg-legend-visibility', 'data')]
+    Output("tg-unified-legend", "children"),
+    Input("multi-tg-data-store", "data"),
+    Input("tg-legend-visibility", "data"),
 )
-def update_unified_legend(data_json, vis_dict):
+def update_unified_legend(data_json: Dict[str, str] | None, vis_dict: Dict[str, bool] | None):
+    """Crea las badges de la leyenda unificada (con ojito para toggle)."""
     vis_dict = sync_vis_dict(data_json, vis_dict)
     if not data_json:
         return []
+
     legend = []
     for i, filename in enumerate(data_json.keys()):
-        color = COLOR_PALETTE[i % len(COLOR_PALETTE)]
+        color = PLOTLY_COLORS[i % len(PLOTLY_COLORS)]
         visible = vis_dict.get(filename, True)
         icon = "fa fa-eye" if visible else "fa fa-eye-slash"
         legend.append(
             dmc.Badge(
                 [
-                    filename.rsplit('.', 1)[0],
+                    filename.rsplit(".", 1)[0],
                     dmc.ActionIcon(
                         html.I(className=icon, style={"color": "white"}),
-                        id={'type': 'legend-eye', 'index': filename},
+                        id={"type": "legend-eye", "index": filename},
                         size="sm",
                         color="gray",
                         variant="subtle",
-                        style={"marginLeft": "10px", "verticalAlign": "middle", "background": "transparent"}
-                    )
+                        style={"marginLeft": "10px", "verticalAlign": "middle", "background": "transparent"},
+                        title="Toggle visibility",
+                    ),
                 ],
                 color=color,
                 variant="filled" if visible else "outline",
-                style={"fontSize": "1em", "padding": "8px 16px", "opacity": 1 if visible else 0.4}
+                style={"fontSize": "1em", "padding": "8px 16px", "opacity": 1 if visible else 0.4},
             )
         )
     return legend
 
-@dash.callback(
-    Output('tg-legend-visibility', 'data'),
-    [
-        Input('multi-tg-data-store', 'data'),
-        Input({'type': 'legend-eye', 'index': dash.ALL}, 'n_clicks')
-    ],
-    State('tg-legend-visibility', 'data'),
-    prevent_initial_call=False
-)
-def update_visibility(data_json, n_clicks_list, vis_dict):
-    """
-    Actualiza la visibilidad por archivo según los clics en los iconos de la leyenda.
-    """
-    ctx_ = dash.callback_context
 
+@dash.callback(
+    Output("tg-legend-visibility", "data"),
+    Input("multi-tg-data-store", "data"),
+    Input({"type": "legend-eye", "index": dash.ALL}, "n_clicks"),
+    State("tg-legend-visibility", "data"),
+    prevent_initial_call=False,
+)
+def update_visibility(data_json, _n_clicks_list, vis_dict):
+    """
+    Alterna visibilidad por archivo cuando se pulsa un 'ojo' en la leyenda.
+    """
     if not data_json:
         return {}
 
     current_vis = vis_dict.copy() if vis_dict else {}
-
-    triggered_prop_id = ctx_.triggered[0]['prop_id'] if ctx_.triggered else ""
-
-    # Sincroniza con los archivos actuales (nuevos por defecto visibles)
     synced_vis = {filename: current_vis.get(filename, True) for filename in data_json.keys()}
 
-    # ¿Qué se pulsó?
-    is_eye_click = False
-    clicked_filename = None
-
-    if triggered_prop_id.endswith('.n_clicks'):
-        id_str = triggered_prop_id.split('.n_clicks')[0]
-        try:
-            triggered_id = ast.literal_eval(id_str)
-            if isinstance(triggered_id, dict) and triggered_id.get('type') == 'legend-eye':
-                is_eye_click = True
-                clicked_filename = triggered_id['index']
-        except (ValueError, SyntaxError):
-            pass
-
-    if is_eye_click and clicked_filename in synced_vis:
-        synced_vis[clicked_filename] = not synced_vis[clicked_filename]
+    # ¿Se ha pulsado un ojo?
+    if isinstance(ctx.triggered_id, dict) and ctx.triggered_id.get("type") == "legend-eye":
+        fname = ctx.triggered_id["index"]
+        if fname in synced_vis:
+            synced_vis[fname] = not synced_vis[fname]
 
     return synced_vis
 

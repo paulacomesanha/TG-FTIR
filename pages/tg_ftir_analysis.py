@@ -1,31 +1,47 @@
-import dash
-from dash import dcc, html, Input, Output, State, ctx
-import dash_bootstrap_components as dbc
-from dash.exceptions import PreventUpdate
-import pandas as pd
-import dash_mantine_components as dmc
-import numpy as np
-import plotly.graph_objs as go
-from scipy.signal import savgol_filter
+# pages/tg_ftir_analysis.py
+# -----------------------------------------------------------------------------
+# Evolved Gas Analysis (TG-FTIR)
+# - Carga TG (CSV), GS (XLSX) y FTIR (CSV)
+# - Sincroniza tiempo entre TG/GS y muestra espectro FTIR más cercano
+# - Permite "fijar" espectros y compararlos (como en la primera versión funcional)
+# - Incluye botón "Walkthrough" para precargar ficheros de ejemplo
+# - Chat experto (opcional, igual que antes)
+# - ***SIN*** conversión a absorbancia (eliminada por completo)
+# -----------------------------------------------------------------------------
+
+from __future__ import annotations
+
 import base64
 import io
-from dash import dash_table
-import dash_daq as daq
-import openai
-from dotenv import load_dotenv
 import os
 from pathlib import Path
 
-dash.register_page(__name__, path='/tg-ftir-analysis', name='Evolved Gas Analysis (EGA)', order=1)
+import dash
+import dash_bootstrap_components as dbc
+import dash_mantine_components as dmc
+import numpy as np
+import pandas as pd
+import plotly.graph_objs as go
+from dash import dcc, html, Input, Output, State, ctx
+from dash.exceptions import PreventUpdate
+from dotenv import load_dotenv
+from scipy.signal import savgol_filter
 
+# (opcionales) usados en tu primera versión
+from dash import dash_table  # noqa: F401
+import dash_daq as daq       # noqa: F401
+
+# ------------------ OpenAI (opcional, como tenías) ------------------
+import openai  # type: ignore
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
-# =========================
-#  Walkthrough: configura aquí tus archivos de ejemplo
-# =========================
-BASE_DIR = Path(__file__).resolve().parents[1]  # carpeta raíz (donde está app.py)
+# ------------------ Registro de página ------------------
+dash.register_page(__name__, path='/tg-ftir-analysis', name='Evolved Gas Analysis (EGA)', order=1)
+
+# ------------------ Walkthrough: archivos de ejemplo ------------------
+BASE_DIR = Path(__file__).resolve().parents[1]
 EGA_WALKTHROUGH = {
     # TG CSV (el callback lee con delimiter=',')
     "tg": {
@@ -67,25 +83,33 @@ def decode_file(contents, file_type='csv'):
         raise ValueError("Unsupported file type")
 
 def calc_smooth_derivative(x, y, window_length=21, polyorder=2):
+    if len(y) < 3:
+        # seguridad: sin puntos suficientes, devuelve ceros
+        return np.asarray(y, dtype=float), np.zeros_like(y, dtype=float)
     if window_length >= len(y):
         window_length = len(y) - 1 if len(y) % 2 == 0 else len(y)
     if window_length < 3:
         window_length = 3
     if window_length % 2 == 0:
         window_length += 1
+    y = np.asarray(y, dtype=float)
+    x = np.asarray(x, dtype=float)
     y_smooth = savgol_filter(y, window_length, polyorder)
-    dy_dx = savgol_filter(y, window_length, polyorder, deriv=1, delta=np.mean(np.diff(x)))
+    delta = float(np.mean(np.diff(x))) if len(x) > 1 else 1.0
+    dy_dx = savgol_filter(y, window_length, polyorder, deriv=1, delta=delta)
     return y_smooth, dy_dx
 
-# Global data holders
+# ------------------ Estado global ------------------
 tg = gs = ftir = None
 last_ftir_hash = None
 
-PASTEL_COLORS = [
-    "#a3c9e2", "#f7b7a3", "#b5ead7", "#f9e79f", "#d7bde2",
-    "#f5cba7", "#aed6f1", "#fad7a0", "#d2b4de", "#f7cac9"
+# Paleta de colores para fijados (como tenías)
+PLOTLY_COLORS = [
+    "#636EFA", "#EF553B", "#00CC96", "#AB63FA", "#FFA15A",
+    "#19D3F3", "#FF6692", "#B6E880", "#FF97FF", "#FECB52"
 ]
 
+# ------------------ Layout ------------------
 layout = dmc.MantineProvider(
     theme={"colorScheme": "light"},
     children=html.Div([
@@ -111,7 +135,7 @@ layout = dmc.MantineProvider(
                         "transform": "translateY(-50%)"
                     }
                 ),
-                # Walkthrough (nuevo) al lado del refresh
+                # Walkthrough
                 html.Button(
                     html.I(className="fa-solid fa-book"),
                     id="walkthrough-btn-ega",
@@ -125,7 +149,7 @@ layout = dmc.MantineProvider(
                         "cursor": "pointer",
                         "verticalAlign": "middle",
                         "position": "absolute",
-                        "left": "60px",   # un poco a la derecha del refresh
+                        "left": "60px",
                         "top": "50%",
                         "transform": "translateY(-50%)"
                     }
@@ -154,6 +178,7 @@ layout = dmc.MantineProvider(
         # ======= Upload cards =======
         dbc.Container([
             dbc.Row([
+                # TG
                 dbc.Col(html.Div([
                     dbc.Card(
                         dbc.CardBody([
@@ -163,7 +188,7 @@ layout = dmc.MantineProvider(
                                 children=html.Div(
                                     ['Select/Drop a TG File'],
                                     className="text-center",
-                                    style={"whiteSpace": "nowrap"}  # evita salto de "File"
+                                    style={"whiteSpace": "nowrap"}
                                 ),
                                 style={
                                     'width': '100%', 'height': '120px', 'lineHeight': '120px',
@@ -172,15 +197,19 @@ layout = dmc.MantineProvider(
                                     'fontWeight': 'bold', 'cursor': 'pointer'
                                 }
                             ),
-                            # check dentro de la card (no negativo el bottom)
                             html.Div(id='tg-status', style={
-                                "transform": "translateX(-50%)", "zIndex": 5, "marginTop": "8px", "left": "50%", "position": "absolute"
+                                "transform": "translateX(-50%)", "zIndex": 5, "marginTop": "8px",
+                                "left": "50%", "position": "absolute"
                             }),
+                            dmc.Space(h=35),  # espacio vertical de 35px
+                            html.Div(id='tg-alert', className="mt-2"),
                         ], style={"position": "relative"}),
                         className="shadow p-4 rounded",
                         style={"position": "relative", "overflow": "hidden"}
                     )
                 ]), width=4),
+
+                # GS
                 dbc.Col(html.Div([
                     dbc.Card(
                         dbc.CardBody([
@@ -200,13 +229,18 @@ layout = dmc.MantineProvider(
                                 }
                             ),
                             html.Div(id='gs-status', style={
-                                "transform": "translateX(-50%)", "zIndex": 5, "marginTop": "8px", "left": "50%", "position": "absolute"
+                                "transform": "translateX(-50%)", "zIndex": 5, "marginTop": "8px",
+                                "left": "50%", "position": "absolute"
                             }),
+                            dmc.Space(h=35),  # espacio vertical de 35px
+                            html.Div(id='gs-alert', className="mt-2"),
                         ], style={"position": "relative"}),
                         className="shadow p-4 rounded",
                         style={"position": "relative", "overflow": "hidden"}
                     )
                 ]), width=4),
+
+                # FTIR
                 dbc.Col(html.Div([
                     dbc.Card(
                         dbc.CardBody([
@@ -226,8 +260,11 @@ layout = dmc.MantineProvider(
                                 }
                             ),
                             html.Div(id='ftir-status', style={
-                                "transform": "translateX(-50%)", "zIndex": 5, "marginTop": "8px", "left": "50%", "position": "absolute"
+                                "transform": "translateX(-50%)", "zIndex": 5, "marginTop": "8px",
+                                "left": "50%", "position": "absolute"
                             }),
+                            dmc.Space(h=35),  # espacio vertical de 35px
+                            html.Div(id='ftir-alert', className="mt-2"),
                         ], style={"position": "relative"}),
                         className="shadow p-4 rounded",
                         style={"position": "relative", "overflow": "hidden"}
@@ -238,6 +275,7 @@ layout = dmc.MantineProvider(
 
         dmc.Divider(m="xl"),
 
+        # Stores
         dcc.Store(id='upload-status', data={'tg': False, 'gs': False, 'ftir': False}),
         dcc.Store(id='show-gs-store', data=False),
         dcc.Store(id='selected-time-store', data=None),
@@ -246,11 +284,13 @@ layout = dmc.MantineProvider(
         # ======= Charts =======
         html.Div(id='chart-container', style={'display': 'none'}, children=[
             dbc.Row([
+                # TG% + d(TG)/dT
                 dbc.Col(
                     dbc.Card(
                         dbc.CardBody([
                             dcc.Graph(id='mass-temp-chart', style={"height": "400px", "width": "100%"}),
-                            dmc.Center(dmc.Badge(id='initial-mass-badge', variant='outline', style={'fontSize':'20px','marginTop':'10px'}))
+                            dmc.Center(dmc.Badge(id='initial-mass-badge', variant='outline',
+                                                 style={'fontSize':'20px','marginTop':'10px'}))
                         ]),
                         className="shadow p-3 mb-4 rounded",
                         style={
@@ -263,6 +303,7 @@ layout = dmc.MantineProvider(
                     ),
                     width=6
                 ),
+                # Temp vs tiempo (+ GS opcional)
                 dbc.Col(
                     dbc.Card(
                         dbc.CardBody([
@@ -276,9 +317,11 @@ layout = dmc.MantineProvider(
                             ),
                             html.Div(
                                 id="gs-manual-row",
-                                style={"display": "flex", "justifyContent": "center", "alignItems": "center", "gap": "16px", "marginTop": "10px"},
+                                style={"display": "flex", "justifyContent": "center", "alignItems": "center",
+                                       "gap": "16px", "marginTop": "10px"},
                                 children=[
-                                    dmc.Button('Add GS data', id='toggle-gs', size='xs', variant='outline', style={'fontSize':'20px'}),
+                                    dmc.Button('Add GS data', id='toggle-gs', size='xs',
+                                               variant='outline', style={'fontSize':'20px'}),
                                     dcc.Input(
                                         id="manual-time-input",
                                         type="number",
@@ -311,6 +354,8 @@ layout = dmc.MantineProvider(
                     width=6
                 )
             ], style={'height':'520px','alignItems':'stretch'}),
+
+            # FTIR
             dbc.Row(
                 dbc.Col(
                     dbc.Card(
@@ -357,6 +402,7 @@ layout = dmc.MantineProvider(
                 className='mt-4'
             ),
         ]),
+
         # ======= Chat =======
         dbc.Row([
             dbc.Col(
@@ -433,48 +479,109 @@ layout = dmc.MantineProvider(
 
 # ======= Upload status & parsing =======
 @dash.callback(
-    [Output('tg-status','children'),
-     Output('gs-status','children'),
-     Output('ftir-status','children'),
-     Output('upload-status','data')],
-    [Input('upload-tg','contents'),
-     Input('upload-gs','contents'),
-     Input('upload-ftir','contents')],
+    [
+        Output('tg-status','children'),
+        Output('gs-status','children'),
+        Output('ftir-status','children'),
+        Output('upload-status','data'),
+        Output('tg-alert','children'),
+        Output('gs-alert','children'),
+        Output('ftir-alert','children'),
+    ],
+    [
+        Input('upload-tg','contents'),
+        Input('upload-gs','contents'),
+        Input('upload-ftir','contents'),
+        Input('upload-tg','filename'),
+        Input('upload-gs','filename'),
+        Input('upload-ftir','filename'),
+    ],
     State('upload-status','data')
 )
-def update_status(tg_contents, gs_contents, ftir_contents, current_status):
+def update_status(tg_contents, gs_contents, ftir_contents,
+                  tg_filename, gs_filename, ftir_filename,
+                  current_status):
     global tg, gs, ftir
 
     ok_icon = html.I(className="fa-solid fa-circle-check", style={"color": "#000000", "fontSize": "26px"})
     ko_icon = html.I(className="fa-solid fa-arrow-up-from-bracket", style={"color": "#000000", "fontSize": "26px"})
 
+    # Helpers para alertas
+    def make_ok_alert(filename: str):
+        if not filename:
+            return ""
+        return dmc.Alert(
+            #title="File loaded",
+            children=filename,
+            color="green",
+            variant="light",
+            radius="md",
+            style={"fontSize": "14px"}
+        )
+
+    def make_err_alert(msg: str):
+        return dmc.Alert(
+            title="Error loading file",
+            children=msg,
+            color="red",
+            variant="light",
+            radius="md",
+            style={"fontSize": "14px"}
+        )
+
+    # --- TG ---
+    tg_alert = ""
     if tg_contents:
-        current_status['tg'] = True
-        tg_status = ok_icon
-        tg = pd.read_csv(decode_file(tg_contents, 'csv'), delimiter=',')
+        try:
+            current_status['tg'] = True
+            tg_status = ok_icon
+            tg = pd.read_csv(decode_file(tg_contents, 'csv'), delimiter=',')
+            tg_alert = make_ok_alert(tg_filename or "TG file")
+        except Exception as e:
+            current_status['tg'] = False
+            tg_status = ko_icon
+            tg_alert = make_err_alert(f"{tg_filename or 'TG'}: {e}")
     else:
         tg_status = ko_icon
 
+    # --- GS ---
+    gs_alert = ""
     if gs_contents:
-        current_status['gs'] = True
-        gs_status = ok_icon
-        gs = pd.read_excel(decode_file(gs_contents, 'xlsx'), skiprows=4)
+        try:
+            current_status['gs'] = True
+            gs_status = ok_icon
+            gs = pd.read_excel(decode_file(gs_contents, 'xlsx'), skiprows=4)
+            gs_alert = make_ok_alert(gs_filename or "GS file")
+        except Exception as e:
+            current_status['gs'] = False
+            gs_status = ko_icon
+            gs_alert = make_err_alert(f"{gs_filename or 'GS'}: {e}")
     else:
         gs_status = ko_icon
 
+    # --- FTIR ---
+    ftir_alert = ""
     if ftir_contents:
-        current_status['ftir'] = True
-        ftir_status = ok_icon
-        ftir = pd.read_csv(decode_file(ftir_contents, 'csv'), delimiter=';')
-        ftir = ftir.dropna(axis=1, how='all')
-        ftir = ftir.dropna(axis=0, how='all')
-        for col in ftir.columns[0:]:
-            ftir[col] = ftir[col].astype(str).str.replace(',', '.').astype(float)
+        try:
+            current_status['ftir'] = True
+            ftir_status = ok_icon
+            ftir = pd.read_csv(decode_file(ftir_contents, 'csv'), delimiter=';')
+            ftir = ftir.dropna(axis=1, how='all')
+            ftir = ftir.dropna(axis=0, how='all')
+            for col in ftir.columns[0:]:
+                ftir[col] = ftir[col].astype(str).str.replace(',', '.').astype(float)
+            ftir_alert = make_ok_alert(ftir_filename or "FTIR file")
+        except Exception as e:
+            current_status['ftir'] = False
+            ftir_status = ko_icon
+            ftir_alert = make_err_alert(f"{ftir_filename or 'FTIR'}: {e}")
     else:
         ftir_status = ko_icon
 
-    return tg_status, gs_status, ftir_status, current_status
+    return tg_status, gs_status, ftir_status, current_status, tg_alert, gs_alert, ftir_alert
 
+
+# Mostrar/ocultar GS
 @dash.callback(
     Output('show-gs-store','data'), Output('toggle-gs','children'),
     Input('toggle-gs','n_clicks'), State('show-gs-store','data')
@@ -508,44 +615,122 @@ def update_charts(status, show_gs, relayout_data, manual_time, fixed_ftir_list):
     if not status or not all(status.values()):
         return {'display':'none'}, {}, {}, {}, '', '', None
 
-    # TG data
-    time_tg = tg.iloc[:,0]*60
-    masa_loss = tg.iloc[:,1]
-    sample_temp = tg.iloc[:,4]
-    prog_temp = tg.iloc[:,3]
+    # ---------- TG ----------
+    time_tg = tg.iloc[:, 0] * 60.0
+    masa_loss = tg.iloc[:, 1]
+    sample_temp = tg.iloc[:, 4]
+    prog_temp  = tg.iloc[:, 3]
 
-    # GS data
-    time_gs = gs.iloc[:,0]
-    trans_gs = gs.iloc[:,1]
+    # ---------- GS ----------
+    time_gs = gs.iloc[:, 0].astype(float)
+    trans_gs = gs.iloc[:, 1].astype(float)
     df_gs = pd.DataFrame({'Time (s)': time_gs, 'Signal': trans_gs})
 
-    # FTIR -> tabla con tiempos en filas
-    df_ftir = ftir.T
-    df_ftir.columns = df_ftir.iloc[0]
+    # ---------- FTIR robusto (SIN absorbancia) ----------
+    # Transponer: tiempos pasan a filas
+    df_ftir = ftir.T.copy()
+    df_ftir.columns = df_ftir.iloc[0]    # primera fila -> cabecera (nº de onda)
     df_ftir = df_ftir.iloc[1:]
     df_ftir.reset_index(inplace=True)
     df_ftir.rename(columns={df_ftir.columns[0]: 'Time (s)'}, inplace=True)
-    df_ftir['Time (s)'] = df_ftir['Time (s)'].astype(str).str.replace(',', '.').astype(float)
-    wavelengths = [int(col) for col in df_ftir.columns[1:]]
 
-    # TG normalized & DTG
-    init_mass = masa_loss.max()
-    fin_mass = masa_loss.min()
-    norm_mass = 100*(masa_loss-fin_mass)/(init_mass-fin_mass) if (init_mass-fin_mass)!=0 else np.zeros_like(masa_loss)
-    _, deriv = calc_smooth_derivative(sample_temp, norm_mass)
-    deriv_norm = 100 * (deriv - np.min(deriv)) / (np.max(deriv) - np.min(deriv)) if (np.max(deriv)-np.min(deriv))!=0 else np.zeros_like(deriv)
-
-    fig1 = go.Figure()
-    fig1.add_trace(go.Scatter(x=sample_temp, y=norm_mass, mode='lines', name='TG (%)', line=dict(color='#800000')))
-    fig1.add_trace(go.Scatter(x=sample_temp, y=deriv_norm, mode='lines', name='d(TG)/dT (normalizado)', line=dict(color='#1f77b4')))
-    fig1.update_layout(
-        legend=dict(orientation="h", yanchor="bottom", y=-0.35, xanchor="center", x=0.5),
-        yaxis=dict(title='Weight loss (%)', showgrid=True, gridcolor='#ccc', showline=True, linecolor='#999'),
-        xaxis=dict(title='Temperature (°C)', showgrid=True, gridcolor='#ccc', showline=True, linecolor='#999'),
-        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)'
+    # "Time (s)" puede venir con coma decimal aunque ya leíste el CSV a float; por si acaso:
+    df_ftir['Time (s)'] = (
+        df_ftir['Time (s)'].astype(str).str.replace(',', '.', regex=False).astype(float)
     )
 
-    # selección de tiempo
+    # Detecta columnas de número de onda:
+    kept_cols = []     # nombres EXACTOS (pueden ser float, int o str) que existen en df_ftir
+    wavelengths = []   # sus valores numéricos como float, mismo orden que kept_cols
+    for c in list(df_ftir.columns[1:]):  # todas salvo "Time (s)"
+        if isinstance(c, (int, float, np.number)):
+            kept_cols.append(c)
+            wavelengths.append(float(c))
+        else:
+            s = str(c).strip().replace(',', '.')
+            try:
+                val = float(s)
+                kept_cols.append(c)   # usamos el label original para indexar SIN KeyError
+                wavelengths.append(val)
+            except Exception:
+                # columna no numérica -> la ignoramos
+                pass
+
+    # Si hay columnas numéricas, nos quedamos sólo con ellas (evita KeyError por casteos)
+    if kept_cols:
+        df_ftir = df_ftir[['Time (s)'] + kept_cols]
+        wavelengths = np.asarray(wavelengths, dtype=float)
+    else:
+        # Fallback imposible en archivos correctos: usamos todas tal cual y X incremental
+        kept_cols = list(df_ftir.columns[1:])
+        wavelengths = np.arange(len(kept_cols), dtype=float)
+
+    # ---------- TG normalizada + DTG ----------
+    init_mass = float(masa_loss.max())
+    fin_mass  = float(masa_loss.min())
+    if (init_mass - fin_mass) != 0:
+        norm_mass = 100.0 * (masa_loss - fin_mass) / (init_mass - fin_mass)
+    else:
+        norm_mass = np.zeros_like(masa_loss)
+
+    _, deriv = calc_smooth_derivative(sample_temp, norm_mass)
+    if (np.max(deriv) - np.min(deriv)) != 0:
+        deriv_norm = 100.0 * (deriv - np.min(deriv)) / (np.max(deriv) - np.min(deriv))
+    else:
+        deriv_norm = np.zeros_like(deriv)
+
+    # Crear figura
+    fig1 = go.Figure()
+
+    # TG en eje primario (izquierda)
+    fig1.add_trace(go.Scatter(
+        x=sample_temp, y=norm_mass,
+        mode='lines', name='TG (%)',
+        line=dict(color='red'),
+        yaxis="y1"
+    ))
+
+    # DTG en eje secundario (derecha)
+    fig1.add_trace(go.Scatter(
+        x=sample_temp, y=deriv_norm,
+        mode='lines', name='d(TG)/dT (normalizado)',
+        line=dict(color='blue'),
+        yaxis="y2"
+    ))
+
+    # Configurar layout con doble eje
+    fig1.update_layout(
+        showlegend=False, #legend=dict(orientation="h", yanchor="bottom", y=-0.35, xanchor="center", x=0.5),
+        xaxis=dict(
+            title='Temperature (°C)',
+            title_font_size=20,
+            showgrid=True, gridcolor='#ccc',
+            showline=True, linecolor='#999'
+        ),
+        yaxis=dict(
+            title='TG',
+            title_font_color='red',
+            title_font_size=20,
+            tickfont=dict(color='red'),
+            showgrid=True, gridcolor='#ccc',
+            showline=True, linecolor='red'
+        ),
+        yaxis2=dict(
+            title='DTG',
+            title_font_color='blue',
+            title_font_size=20,
+            tickfont=dict(color='blue'),
+            overlaying='y', side='right',
+            showgrid=False, showline=True, linecolor='blue'
+        ),
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        margin=dict(l=20, r=20, t=10, b=70),
+        font_family="Segoe UI, system-ui"
+    )
+
+
+    # ---------- Selección de tiempo ----------
     if ctx.triggered_id == "manual-time-input" and manual_time is not None:
         selected_time = float(manual_time)
     elif ctx.triggered_id == "time-temp-chart" and relayout_data and ('shapes[0].x0' in relayout_data or 'shapes[0].x1' in relayout_data):
@@ -556,59 +741,76 @@ def update_charts(status, show_gs, relayout_data, manual_time, fixed_ftir_list):
         selected_time = float(df_gs['Time (s)'].min())
     selected_time = float(np.clip(selected_time, df_gs['Time (s)'].min(), df_gs['Time (s)'].max()))
 
-    # TG temp + GS + línea roja
+    # ---------- Temp/Time + GS + línea roja ----------
     traces = [go.Scatter(x=time_tg, y=prog_temp, mode='lines', name='TG Temp', line=dict(color='#006400'))]
     if show_gs:
         traces.append(go.Scatter(x=time_gs, y=trans_gs, mode='lines', name='GS Signal', line=dict(color='#00008B'), yaxis='y2'))
     fig2 = go.Figure(data=traces)
-    fig2.add_shape(type='line', x0=selected_time, x1=selected_time, y0=0, y1=1, xref='x', yref='paper', line=dict(color='red', width=2), editable=True)
+    fig2.add_shape(type='line', x0=selected_time, x1=selected_time, y0=0, y1=1,
+                   xref='x', yref='paper', line=dict(color='red', width=2), editable=True)
     layout2 = dict(
         xaxis=dict(title='Time (s)', showgrid=True, gridcolor='#ccc', showline=True, linecolor='#999'),
         yaxis=dict(title='Temperature (°C)', showgrid=not show_gs, gridcolor='#ccc', showline=True, linecolor='#006400', tickfont=dict(color='#006400')),
         dragmode='drawline', newshape_line_color='red',
         plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-        legend=dict(orientation="h", yanchor="bottom", y=-0.35, xanchor="center", x=0.5)
+        legend=dict(orientation="h", yanchor="bottom", y=-0.35, xanchor="center", x=0.5),
+        margin=dict(l=60, r=20, t=10, b=70),
+        font_family="Segoe UI, system-ui"
     )
     if show_gs:
-        layout2['yaxis2'] = dict(overlaying='y', side='right', title='GS Signal', showgrid=False, showline=True, linecolor='#00008B', tickfont=dict(color='#00008B'))
+        layout2['yaxis2'] = dict(overlaying='y', side='right', title='GS Signal', showgrid=False, showline=True, linecolor='#00008B', tickfont=dict(color='#00008B'), font_family="Segoe UI, system-ui")
     fig2.update_layout(**layout2, title="", title_text="")
 
-    # FTIR: espectro más cercano al tiempo seleccionado
-    closest_idx = (df_ftir['Time (s)'] - selected_time).abs().argmin()
+    # ---------- FTIR: espectro más cercano ----------
+    closest_idx  = (df_ftir['Time (s)'] - selected_time).abs().argmin()
     closest_time = float(df_ftir['Time (s)'].iloc[closest_idx])
+    row_data     = df_ftir.iloc[closest_idx]
 
-    row_data = df_ftir.iloc[closest_idx]
-    spectrum = row_data.iloc[1:].values.astype(float)
+    # Usa los labels originales (kept_cols) y el eje numérico (wavelengths)
+    spectrum = row_data.loc[kept_cols].astype(float).to_numpy()
+
     fig_ftir = go.Figure()
-    fig_ftir.add_trace(go.Scatter(x=wavelengths, y=spectrum, mode='lines', name=f'Espectro a {closest_time:.1f}s', line=dict(color='#333')))
+    fig_ftir.add_trace(go.Scatter(
+        x=wavelengths, y=spectrum, mode='lines',
+        name=f'Espectro a {closest_time:.1f}s', line=dict(color='#333')
+    ))
+
+    # Fijados (como antes)
     if fixed_ftir_list:
         for i, f in enumerate(fixed_ftir_list):
-            fig_ftir.add_trace(go.Scatter(x=f["x"], y=f["y"], mode='lines', name=f'Fijado {i+1}', line=dict(color=f["color"], width=2)))
+            fig_ftir.add_trace(go.Scatter(
+                x=f["x"], y=f["y"], mode='lines',
+                name=f'Fijado {i+1}', line=dict(color=f["color"], width=2)
+            ))
+
     fig_ftir.update_xaxes(title="Wavenumber (cm⁻¹)", autorange='reversed', showgrid=True, gridcolor='#ccc', showline=True, linecolor='#999')
     fig_ftir.update_yaxes(title="Transmittance (%)", showgrid=True, gridcolor='#ccc', showline=True, linecolor='#999')
-    fig_ftir.update_layout(plot_bgcolor='white', paper_bgcolor='white', showlegend=False, margin=dict(t=20, b=60))
+    fig_ftir.update_layout(plot_bgcolor='white', paper_bgcolor='white', showlegend=False, margin=dict(l=60, r=20, t=10, b=70), font_family="Segoe UI, system-ui")
 
+    # ---------- Info / badge ----------
     badge_text = f"Initial mass: {init_mass:.2f} mg"
     temp_interp = float(np.interp(selected_time, time_tg, sample_temp))
     btn_txt = f"Selected time (GS): {selected_time:.1f}s | Closest FTIR time: {closest_time:.1f}s | Interpolated temperature (TG): {temp_interp:.1f}°C"
 
     return {'display':'block'}, fig1, fig2, fig_ftir, badge_text, btn_txt, round(selected_time, 2)
 
+
 # ======= Refresh (clientside) =======
 from dash import Output as DOutput, Input as DInput
-app = dash.get_app()
-app.clientside_callback(
-    """
-    function(n_clicks) {
-        if (n_clicks > 0) {
-            window.location.reload();
+_app = dash.get_app()
+if _app is not None:
+    _app.clientside_callback(
+        """
+        function(n_clicks) {
+            if (n_clicks > 0) {
+                window.location.reload();
+            }
+            return null;
         }
-        return null;
-    }
-    """,
-    DOutput('refresh-btn', 'n_clicks'),
-    DInput('refresh-btn', 'n_clicks')
-)
+        """,
+        DOutput('refresh-btn', 'n_clicks'),
+        DInput('refresh-btn', 'n_clicks')
+    )
 
 # ======= Walkthrough: inyecta contents en los Uploads =======
 @dash.callback(
@@ -627,7 +829,6 @@ def ega_walkthrough(n):
     ftir_cfg = EGA_WALKTHROUGH['ftir']
 
     if not (tg_cfg['path'].exists() and gs_cfg['path'].exists() and ftir_cfg['path'].exists()):
-        # Si falta alguno, no hacemos nada para no romper el flujo
         raise PreventUpdate
 
     tg_contents = _file_to_contents(tg_cfg['path'], tg_cfg['mime'])
@@ -635,7 +836,7 @@ def ega_walkthrough(n):
     ftir_contents = _file_to_contents(ftir_cfg['path'], ftir_cfg['mime'])
     return tg_contents, gs_contents, ftir_contents
 
-# ======= FTIR: fijar/eliminar espectros =======
+# ======= FTIR: fijar/eliminar espectros (como en tu versión funcional) =======
 @dash.callback(
     Output('fixed-ftir-list', 'data'),
     Input('fix-ftir-btn', 'n_clicks'),
@@ -654,7 +855,7 @@ def manage_fixed_ftir_list(add_clicks, remove_clicks, fixed_list, fig, info_text
         if fig is None or not fig.get('data'):
             raise PreventUpdate
         current_trace = fig['data'][0]
-        color = PASTEL_COLORS[len(fixed_list) % len(PASTEL_COLORS)]
+        color = PLOTLY_COLORS[len(fixed_list) % len(PLOTLY_COLORS)]
         new_fixed_item = {"x": current_trace['x'], "y": current_trace['y'], "label": info_text, "color": color}
         return fixed_list + [new_fixed_item]
 
@@ -672,7 +873,7 @@ def manage_fixed_ftir_list(add_clicks, remove_clicks, fixed_list, fig, info_text
 )
 def show_fixed_ftir_badges(fixed_list):
     badges = []
-    for i, f in enumerate(fixed_list):
+    for i, f in enumerate(fixed_ftir_list := (fixed_list or [])):
         badges.append(
             dmc.Badge(
                 f["label"],
