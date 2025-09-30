@@ -38,7 +38,7 @@ build_modals = home_dashboard.build_modals
 
 # Registrar la página en el enrutador de Dash Pages
 dash.register_page(__name__, path='/', name='Home', order=0)
-
+dash._dash_renderer._set_react_version('18.2.0')
 # -----------------------------------------------------------------------------
 # Estilos reutilizables
 # -----------------------------------------------------------------------------

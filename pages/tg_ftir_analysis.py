@@ -39,7 +39,7 @@ openai.api_key = OPENAI_API_KEY
 
 # ------------------ Registro de página ------------------
 dash.register_page(__name__, path='/tg-ftir-analysis', name='Evolved Gas Analysis (EGA)', order=1)
-
+dash._dash_renderer._set_react_version('18.2.0')
 # ------------------ Walkthrough: archivos de ejemplo ------------------
 BASE_DIR = Path(__file__).resolve().parents[1]
 EGA_WALKTHROUGH = {
@@ -758,7 +758,16 @@ def update_charts(status, show_gs, relayout_data, manual_time, fixed_ftir_list):
         font_family="Segoe UI, system-ui"
     )
     if show_gs:
-        layout2['yaxis2'] = dict(overlaying='y', side='right', title='GS Signal', showgrid=False, showline=True, linecolor='#00008B', tickfont=dict(color='#00008B'), font_family="Segoe UI, system-ui")
+        layout2['yaxis2'] = dict(
+            overlaying='y',
+            side='right',
+            title='GS Signal',
+            showgrid=False,
+            showline=True,
+            linecolor='#00008B',
+            tickfont=dict(color='#00008B', family="Segoe UI, system-ui"),
+            title_font=dict(family="Segoe UI, system-ui")
+        )
     fig2.update_layout(**layout2, title="", title_text="")
 
     # ---------- FTIR: espectro más cercano ----------

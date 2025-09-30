@@ -17,6 +17,7 @@ from dash.exceptions import PreventUpdate
 from scipy.signal import savgol_filter
 
 dash.register_page(__name__, path="/tg-comparison", name="Thermogravimetric Analysis", order=2)
+dash._dash_renderer._set_react_version('18.2.0')
 
 # =========================
 # Walkthrough: define aquí tus CSV de ejemplo
@@ -85,37 +86,35 @@ def _read_table_like(buf: io.StringIO | bytes | bytearray, filename: str) -> pd.
 
 def _select_tg_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Selecciona columnas TG (X y Mass) de forma robusta:
-      - Prioriza nombres que contengan 'temp', 'temperature', 'x_value', etc. para X.
-      - Para masa, busca 'mass', 'weight', 'tg', 'm%'.
-      - Si no encuentra por nombre, cae a las dos primeras columnas.
-    Salida: DataFrame con columnas ['Temperature'|'X_Value', 'Mass'].
+    Selecciona columnas TG de forma robusta:
+      - Si existen 'Sample Temperature', 'Program Temperature', y 'Mass', las devuelve.
+      - Si no, busca por nombres similares.
+      - No renombra columnas, solo selecciona.
     """
-    cols_lower = {str(c).lower(): c for c in df.columns}
-    temp_keys = [k for k in cols_lower if any(s in k for s in ["temp", "temperature", "x_value", "x value", "time"])]
-    mass_keys = [k for k in cols_lower if any(s in k for s in ["mass", "weight", "tg", "m(", "m%", "m %"])]
+    cols = df.columns.str.lower()
+    selected_cols = []
 
-    # Si encontramos por nombre, usamos esos
-    if mass_keys:
-        mcol = cols_lower[mass_keys[0]]
-    else:
-        # fallback: segunda columna
-        mcol = df.columns[1] if df.shape[1] >= 2 else df.columns[-1]
+    # Sample Temperature
+    for i, c in enumerate(cols):
+        if "sample temperature" in c:
+            selected_cols.append(df.columns[i])
+            break
+    # Program Temperature
+    for i, c in enumerate(cols):
+        if "program temperature" in c:
+            selected_cols.append(df.columns[i])
+            break
+    # Mass
+    for i, c in enumerate(cols):
+        if "Unsubtracted Weight" in c or "weight" in c or "tg" in c:
+            selected_cols.append(df.columns[i])
+            break
 
-    if temp_keys:
-        tcol = cols_lower[temp_keys[0]]
-        out = df[[tcol, mcol]].copy()
-        # etiqueta de X según si parece temperatura o tiempo
-        out.columns = ["Temperature" if "temp" in str(tcol).lower() else "X_Value", "Mass"]
-        return out
+    # Si no encuentra, usa las dos primeras columnas como fallback
+    if not selected_cols:
+        selected_cols = df.columns[:2]
 
-    # Fallback: primeras dos columnas
-    if df.shape[1] >= 2:
-        out = df.iloc[:, [0, 1]].copy()
-        out.columns = ["X_Value", "Mass"]
-        return out
-
-    raise ValueError("No se pudieron identificar columnas de X/Temperatura y Masa en el archivo.")
+    return df[selected_cols].copy()
 
 
 def calc_smooth_derivative(
@@ -448,7 +447,7 @@ def show_graph_cards(show_cards: bool):
     Input("multi-tg-data-store", "data"),
     Input("tg-legend-visibility", "data"),
 )
-def plot_temp_programs(data_json: Dict[str, str] | None, vis_dict: Dict[str, bool] | None):
+def plot_temp_programs(data_json, vis_dict):
     fig = go.Figure()
     vis_dict = sync_vis_dict(data_json, vis_dict)
     if not data_json or not any(vis_dict.values()):
@@ -459,27 +458,28 @@ def plot_temp_programs(data_json: Dict[str, str] | None, vis_dict: Dict[str, boo
         if not vis_dict.get(filename, True):
             continue
         df = pd.read_json(io.StringIO(df_json_single), orient="split")
-        # Prioriza 'Temperature' si existe; si no, X_Value
-        temp_col = "Temperature" if "Temperature" in df.columns else "X_Value"
-        x_data = df[temp_col].astype(float)
-        fig.add_trace(
-            go.Scatter(
-                x=np.arange(len(x_data)),  # se representa como índice (no hay tiempo real)
-                y=x_data,
-                mode="lines",
-                name=filename.rsplit(".", 1)[0],
-                line=dict(width=2, dash="solid"),
-            )
-        )
+        # Eje Y: Program Temperature, Eje X: índice (tiempo)
+        if "Program Temperature" in df.columns:
+            y_data = df["Program Temperature"].astype(float).values
+            x_data = np.arange(len(y_data))
+        elif "Temperature" in df.columns:
+            y_data = df["Temperature"].astype(float).values
+            x_data = np.arange(len(y_data))
+        else:
+            continue
+        fig.add_trace(go.Scatter(
+            x=x_data, y=y_data, mode='lines',
+            name=filename.rsplit('.', 1)[0],
+            line=dict(width=2, dash="solid")
+        ))
 
     fig.update_layout(
-        xaxis_title="Index",
-        yaxis_title="Temperature (°C)",
+        xaxis_title="Time (s)",
+        yaxis_title="Program Temperature (°C)" if "Program Temperature" in df.columns else "Temperature (°C)",
         margin=dict(l=60, r=20, t=10, b=70),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        xaxis=dict(showgrid=True, gridcolor="#ccc", showline=True, linecolor="#006400", tickfont=dict(color="#006400")),
-        yaxis=dict(showgrid=True, gridcolor="#ccc", showline=True, linecolor="#006400", tickfont=dict(color="#006400")),
+        plot_bgcolor="white", paper_bgcolor="white",
+        xaxis=dict(showgrid=True, gridcolor="#e0e0e0"),
+        yaxis=dict(showgrid=True, gridcolor="#e0e0e0"),
         showlegend=False,
         font_family="Segoe UI, system-ui"
     )
@@ -492,48 +492,52 @@ def plot_temp_programs(data_json: Dict[str, str] | None, vis_dict: Dict[str, boo
     Input("multi-tg-data-store", "data"),
     Input("tg-legend-visibility", "data"),
 )
-def plot_multi_tg_dtg(data_json: Dict[str, str] | None, vis_dict: Dict[str, bool] | None):
+def plot_multi_tg_dtg(data_json, vis_dict):
     fig = go.Figure()
     vis_dict = sync_vis_dict(data_json, vis_dict)
     if not data_json or not any(vis_dict.values()):
         fig.update_layout(xaxis={"visible": False}, yaxis={"visible": False}, plot_bgcolor="white", paper_bgcolor="white")
         return fig
 
-    last_is_temp = True
     for i, (filename, df_json_single) in enumerate(data_json.items()):
         if not vis_dict.get(filename, True):
             continue
         df = pd.read_json(io.StringIO(df_json_single), orient="split")
-        temp_col = "Temperature" if "Temperature" in df.columns else "X_Value"
-        last_is_temp = (temp_col == "Temperature")
-        x_data = df[temp_col].astype(float).values
-        y_data = df["Mass"].astype(float).values
-
-        # Normalización 0–100 usando primer y último punto
-        init_mass, fin_mass = float(y_data[0]), float(y_data[-1])
-        denom = (init_mass - fin_mass)
-        norm_mass = 100.0 * (y_data - fin_mass) / denom if denom != 0 else np.zeros_like(y_data)
-
+        # Eje X: Sample Temperature (preferente), si no, Temperature
+        if "Sample Temperature" in df.columns:
+            x_data = df["Sample Temperature"].astype(float).values
+            x_title = "Sample Temperature (°C)"
+        elif "Temperature" in df.columns:
+            x_data = df["Temperature"].astype(float).values
+            x_title = "Temperature (°C)"
+        else:
+            continue
+        # Busca la columna de masa
+        mass_col = None
+        for col in df.columns:
+            col_lower = col.lower()
+            if "unsubtracted weight" in col_lower or "weight" in col_lower or "mass" in col_lower or "tg" in col_lower:
+                mass_col = col
+                break
+        if mass_col is None:
+            continue
+        y_data = df[mass_col].astype(float).values
+        init_mass = y_data[0]
+        fin_mass = y_data[-1]
+        norm_mass = 100 * (y_data - fin_mass) / (init_mass - fin_mass) if (init_mass - fin_mass) != 0 else np.zeros_like(y_data)
         _, deriv = calc_smooth_derivative(x_data, norm_mass)
-        dmin, dmax = float(np.min(deriv)), float(np.max(deriv))
-        deriv_norm = 100.0 * (deriv - dmin) / (dmax - dmin) if (dmax - dmin) != 0 else np.zeros_like(deriv)
-
-        fig.add_trace(
-            go.Scatter(
-                x=x_data,
-                y=deriv_norm,
-                mode="lines",
-                name=filename.rsplit(".", 1)[0],
-                line=dict(width=2, dash="solid"),
-            )
-        )
+        deriv_norm = 100 * (deriv - np.min(deriv)) / (np.max(deriv) - np.min(deriv)) if (np.max(deriv) - np.min(deriv)) != 0 else np.zeros_like(deriv)
+        fig.add_trace(go.Scatter(
+            x=x_data, y=deriv_norm, mode='lines',
+            name=filename.rsplit('.', 1)[0],
+            line=dict(width=2, dash="solid")
+        ))
 
     fig.update_layout(
-        xaxis_title="Temperature (°C)" if last_is_temp else "X-Value (Temp or Time)",
+        xaxis_title=x_title,
         yaxis_title="Normalized DTG (%)",
         margin=dict(l=60, r=20, t=10, b=70),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
+        plot_bgcolor="white", paper_bgcolor="white",
         xaxis=dict(showgrid=True, gridcolor="#e0e0e0"),
         yaxis=dict(showgrid=True, gridcolor="#e0e0e0"),
         showlegend=False,
@@ -549,50 +553,56 @@ def plot_multi_tg_dtg(data_json: Dict[str, str] | None, vis_dict: Dict[str, bool
     Input("multi-tg-data-store", "data"),
     Input("tg-legend-visibility", "data"),
 )
-def plot_multi_tg_comparison(data_json: Dict[str, str] | None, vis_dict: Dict[str, bool] | None):
+def plot_multi_tg_comparison(data_json, vis_dict):
     fig = go.Figure()
     vis_dict = sync_vis_dict(data_json, vis_dict)
     if not data_json or not any(vis_dict.values()):
         fig.update_layout(xaxis={"visible": False}, yaxis={"visible": False}, plot_bgcolor="white", paper_bgcolor="white")
         return fig
 
-    last_is_temp = True
     for i, (filename, df_json_single) in enumerate(data_json.items()):
         if not vis_dict.get(filename, True):
             continue
         df = pd.read_json(io.StringIO(df_json_single), orient="split")
-        temp_col = "Temperature" if "Temperature" in df.columns else "X_Value"
-        last_is_temp = (temp_col == "Temperature")
-        x_data = df[temp_col].astype(float).values
-        y_data = df["Mass"].astype(float).values
-
-        # Normalización 0–100 usando primer y último punto
-        init_mass, fin_mass = float(y_data[0]), float(y_data[-1])
-        denom = (init_mass - fin_mass)
-        norm_mass = 100.0 * (y_data - fin_mass) / denom if denom != 0 else np.zeros_like(y_data)
-
-        fig.add_trace(
-            go.Scatter(
-                x=x_data,
-                y=norm_mass,
-                mode="lines",
-                name=filename.rsplit(".", 1)[0],
-                line=dict(width=2, dash="solid"),
-            )
-        )
+        # Eje X: Sample Temperature o Temperature
+        if "Sample Temperature" in df.columns:
+            x_data = df["Sample Temperature"].astype(float).values
+            x_title = "Sample Temperature (°C)"
+        elif "Temperature" in df.columns:
+            x_data = df["Temperature"].astype(float).values
+            x_title = "Temperature (°C)"
+        else:
+            continue
+        # Busca la columna de masa
+        mass_col = None
+        for col in df.columns:
+            col_lower = col.lower()
+            if "unsubtracted weight" in col_lower or "weight" in col_lower or "mass" in col_lower or "tg" in col_lower:
+                mass_col = col
+                break
+        if mass_col is None:
+            continue
+        y_data = df[mass_col].astype(float).values
+        init_mass = y_data[0]
+        fin_mass = y_data[-1]
+        norm_mass = 100 * (y_data - fin_mass) / (init_mass - fin_mass) if (init_mass - fin_mass) != 0 else np.zeros_like(y_data)
+        fig.add_trace(go.Scatter(
+            x=x_data, y=norm_mass, mode='lines',
+            name=filename.rsplit('.', 1)[0],
+            line=dict(width=2, dash="solid")
+        ))
 
     fig.update_layout(
-        xaxis_title="Temperature (°C)" if last_is_temp else "X-Value (Temp or Time)",
+        xaxis_title="Sample Temperature (°C)" if "Sample Temperature" in df.columns else "Temperature (°C)",
         yaxis_title="Weight loss (%)",
-        plot_bgcolor="white",
-        paper_bgcolor="white",
+        margin=dict(l=60, r=20, t=10, b=70),
+        plot_bgcolor="white", paper_bgcolor="white",
         xaxis=dict(showgrid=True, gridcolor="#e0e0e0"),
         yaxis=dict(showgrid=True, gridcolor="#e0e0e0"),
         showlegend=False,
-        margin=dict(l=60, r=20, t=10, b=70),
         font_family="Segoe UI, system-ui"
     )
-    fig.update_yaxes(range=[100, 0])
+    fig.update_yaxes(range=[0, 100])
     return fig
 
 
