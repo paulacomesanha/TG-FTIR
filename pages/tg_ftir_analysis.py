@@ -31,7 +31,7 @@ from scipy.signal import savgol_filter
 from dash import dash_table  # noqa: F401
 import dash_daq as daq       # noqa: F401
 
-# ------------------ OpenAI (opcional, como tenías) ------------------
+# ------------------ OpenAI  ------------------
 import openai  # type: ignore
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
